@@ -48,26 +48,65 @@ class MinecraftDownloader {
     return response.data;
   }
 
-  async downloadFile(url, dest, onProgress) {
-    const response = await axios({
-      url: url,
-      method: 'GET',
-      responseType: 'stream'
-    });
+  async downloadFile(url, dest, onProgress, retries = 3) {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const response = await axios({
+          url: url,
+          method: 'GET',
+          responseType: 'stream',
+          validateStatus: (status) => status === 200 // Только 200 OK считается успехом
+        });
 
-    const totalLength = response.headers['content-length'];
-    let downloadedLength = 0;
+        const totalLength = response.headers['content-length'];
+        let downloadedLength = 0;
 
-    response.data.on('data', (chunk) => {
-      downloadedLength += chunk.length;
-      if (onProgress && totalLength) {
-        const progress = Math.floor((downloadedLength / totalLength) * 100);
-        onProgress(progress);
+        response.data.on('data', (chunk) => {
+          downloadedLength += chunk.length;
+          if (onProgress && totalLength) {
+            const progress = Math.floor((downloadedLength / totalLength) * 100);
+            onProgress(progress);
+          }
+        });
+
+        await fs.ensureDir(path.dirname(dest));
+        await streamPipeline(response.data, fs.createWriteStream(dest));
+
+        // Успешно скачано
+        return;
+      } catch (error) {
+        console.error(`Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
+
+        // Удаляем битый файл если он был создан
+        if (fs.existsSync(dest)) {
+          await fs.remove(dest);
+        }
+
+        // Если это последняя попытка - выбрасываем ошибку
+        if (attempt === retries - 1) {
+          throw new Error(`Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`);
+        }
+
+        // Ждём перед следующей попыткой (экспоненциальный backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
-    });
+    }
+  }
 
-    await fs.ensureDir(path.dirname(dest));
-    await streamPipeline(response.data, fs.createWriteStream(dest));
+  async downloadJsonFile(url, dest, retries = 3) {
+    await this.downloadFile(url, dest, null, retries);
+
+    // Валидация JSON
+    try {
+      const content = await fs.readJson(dest);
+      return content;
+    } catch (error) {
+      // JSON невалиден - удаляем файл
+      if (fs.existsSync(dest)) {
+        await fs.remove(dest);
+      }
+      throw new Error(`Скачанный файл не является валидным JSON: ${dest}\nОшибка: ${error.message}\nURL: ${url}`);
+    }
   }
 
   async download(version, onProgress, callback) {
@@ -157,9 +196,25 @@ class MinecraftDownloader {
       const assetIndexUrl = versionData.assetIndex.url;
       const assetIndexPath = path.join(this.assetsDir, 'indexes', `${versionData.assetIndex.id}.json`);
 
-      await this.downloadFile(assetIndexUrl, assetIndexPath);
+      // Если файл существует, проверим его валидность
+      if (fs.existsSync(assetIndexPath)) {
+        try {
+          await fs.readJson(assetIndexPath);
+          console.log(`Asset index уже существует и валиден: ${versionData.assetIndex.id}.json`);
+        } catch (error) {
+          console.warn(`Asset index существует, но битый - удаляем: ${versionData.assetIndex.id}.json`);
+          await fs.remove(assetIndexPath);
+        }
+      }
 
-      const assetIndex = await fs.readJson(assetIndexPath);
+      // Скачиваем и валидируем asset index JSON (если нужно)
+      let assetIndex;
+      if (fs.existsSync(assetIndexPath)) {
+        assetIndex = await fs.readJson(assetIndexPath);
+      } else {
+        console.log(`Скачивание asset index: ${versionData.assetIndex.id}.json`);
+        assetIndex = await this.downloadJsonFile(assetIndexUrl, assetIndexPath);
+      }
       const assets = Object.values(assetIndex.objects);
 
       let downloadedAssets = 0;

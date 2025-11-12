@@ -211,85 +211,111 @@ ipcMain.handle('get-system-info', async () => {
 
 // Установка сборки
 ipcMain.handle('install-modpack', async (event, modpackId) => {
-  const modpack = configManager.getModpack(modpackId);
-  if (!modpack) {
-    throw new Error('Modpack not found');
-  }
+  try {
+    const modpack = configManager.getModpack(modpackId);
+    if (!modpack) {
+      throw new Error('Modpack not found');
+    }
 
-  // 1. Проверка и загрузка Java
-  const javaInstalled = await javaDownloader.checkJava();
-  if (!javaInstalled) {
+    // 1. Проверка и загрузка Java
+    const javaInstalled = await javaDownloader.checkJava();
+    if (!javaInstalled) {
+      mainWindow.webContents.send('install-status', {
+        modpackId: modpackId,
+        status: 'downloading-java'
+      });
+
+      await new Promise((resolve, reject) => {
+        javaDownloader.download(
+          (progress) => {
+            mainWindow.webContents.send('download-progress', {
+              type: 'java',
+              progress: progress
+            });
+          },
+          (error) => {
+            if (error) reject(error);
+            else resolve();
+          }
+        );
+      });
+    }
+
+    // 2. Загрузка Minecraft
     mainWindow.webContents.send('install-status', {
       modpackId: modpackId,
-      status: 'downloading-java'
+      status: 'downloading-minecraft'
     });
 
-    await new Promise((resolve, reject) => {
-      javaDownloader.download(
-        (progress) => {
-          mainWindow.webContents.send('download-progress', {
-            type: 'java',
-            progress: progress
-          });
-        },
-        (error) => {
-          if (error) reject(error);
-          else resolve();
-        }
-      );
-    });
-  }
+    const minecraftInstalled = await minecraftDownloader.checkMinecraft(modpack.minecraftVersion);
+    if (!minecraftInstalled) {
+      await new Promise((resolve, reject) => {
+        minecraftDownloader.download(
+          modpack.minecraftVersion,
+          (progress) => {
+            mainWindow.webContents.send('download-progress', {
+              type: 'minecraft',
+              version: modpack.minecraftVersion,
+              progress: progress
+            });
+          },
+          (error) => {
+            if (error) reject(error);
+            else resolve();
+          }
+        );
+      });
+    }
 
-  // 2. Загрузка Minecraft
-  mainWindow.webContents.send('install-status', {
-    modpackId: modpackId,
-    status: 'downloading-minecraft'
-  });
+    // 3. Установка модов (если есть)
+    if (modpack.mods && modpack.mods.length > 0) {
+      mainWindow.webContents.send('install-status', {
+        modpackId: modpackId,
+        status: 'installing-mods'
+      });
 
-  const minecraftInstalled = await minecraftDownloader.checkMinecraft(modpack.minecraftVersion);
-  if (!minecraftInstalled) {
-    await new Promise((resolve, reject) => {
-      minecraftDownloader.download(
-        modpack.minecraftVersion,
-        (progress) => {
-          mainWindow.webContents.send('download-progress', {
-            type: 'minecraft',
-            version: modpack.minecraftVersion,
-            progress: progress
-          });
-        },
-        (error) => {
-          if (error) reject(error);
-          else resolve();
-        }
-      );
-    });
-  }
+      const instanceDir = path.join(getLauncherDir(), 'instances', modpackId, 'mods');
+      await fs.ensureDir(instanceDir);
 
-  // 3. Установка модов (если есть)
-  if (modpack.mods && modpack.mods.length > 0) {
+      // Здесь будет логика загрузки модов
+      // TODO: Реализовать загрузку модов из URLs
+    }
+
+    // Отметить сборку как установленную
+    modpack.installed = true;
+    configManager.updateModpack(modpackId, modpack);
+
     mainWindow.webContents.send('install-status', {
       modpackId: modpackId,
-      status: 'installing-mods'
+      status: 'completed'
     });
 
-    const instanceDir = path.join(getLauncherDir(), 'instances', modpackId, 'mods');
-    await fs.ensureDir(instanceDir);
+    return { success: true };
+  } catch (error) {
+    console.error('Ошибка установки:', error);
 
-    // Здесь будет логика загрузки модов
-    // TODO: Реализовать загрузку модов из URLs
+    // Отправляем статус ошибки
+    mainWindow.webContents.send('install-status', {
+      modpackId: modpackId,
+      status: 'error',
+      error: error.message
+    });
+
+    // Формируем понятное сообщение об ошибке
+    let userMessage = 'Ошибка установки';
+
+    if (error.message.includes('JSON')) {
+      userMessage = 'Ошибка скачивания файлов конфигурации. Проверьте интернет-соединение и попробуйте снова.';
+    } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+      userMessage = 'Не удалось подключиться к серверам Mojang. Проверьте интернет-соединение.';
+    } else if (error.message.includes('404')) {
+      userMessage = 'Файлы версии не найдены на сервере Mojang. Возможно, версия больше не поддерживается.';
+    } else if (error.message.includes('ENOSPC')) {
+      userMessage = 'Недостаточно места на диске для установки.';
+    }
+
+    throw new Error(`${userMessage}\n\nТехнические детали: ${error.message}`);
   }
-
-  // Отметить сборку как установленную
-  modpack.installed = true;
-  configManager.updateModpack(modpackId, modpack);
-
-  mainWindow.webContents.send('install-status', {
-    modpackId: modpackId,
-    status: 'completed'
-  });
-
-  return { success: true };
 });
 
 console.log('Minecraft Launcher started successfully');

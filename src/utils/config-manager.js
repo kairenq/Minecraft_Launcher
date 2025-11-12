@@ -32,37 +32,41 @@ class ConfigManager {
       const defaultModpacks = [
         {
           id: 'vanilla-1-20-1',
-          name: 'Vanilla 1.20.1',
-          description: 'Чистая версия Minecraft 1.20.1 без модов',
+          name: 'Minecraft 1.20.1',
+          description: 'Последняя стабильная версия Minecraft. Включает новые биомы, мобов и блоки.',
           minecraftVersion: '1.20.1',
-          image: 'vanilla.jpg',
           installed: false,
           mods: []
         },
         {
-          id: 'modded-survival',
-          name: 'Modded Survival',
-          description: 'Сборка для выживания с техническими и магическими модами',
-          minecraftVersion: '1.20.1',
-          image: 'modded-survival.jpg',
+          id: 'vanilla-1-19-4',
+          name: 'Minecraft 1.19.4',
+          description: 'The Wild Update - новые биомы болот и глубокой тьмы, Warden и Ancient Cities.',
+          minecraftVersion: '1.19.4',
           installed: false,
           mods: []
         },
         {
-          id: 'tech-pack',
-          name: 'Tech Pack',
-          description: 'Техническая сборка с индустриальными модами',
-          minecraftVersion: '1.20.1',
-          image: 'tech-pack.jpg',
+          id: 'vanilla-1-18-2',
+          name: 'Minecraft 1.18.2',
+          description: 'Caves & Cliffs - обновленная генерация мира, новые пещеры и горы.',
+          minecraftVersion: '1.18.2',
           installed: false,
           mods: []
         },
         {
-          id: 'magic-adventures',
-          name: 'Magic Adventures',
-          description: 'Приключенческая сборка с магическими модами',
-          minecraftVersion: '1.20.1',
-          image: 'magic-adventures.jpg',
+          id: 'vanilla-1-16-5',
+          name: 'Minecraft 1.16.5',
+          description: 'Nether Update - обновленный ад с новыми биомами, мобами и блоками. Популярна для модов.',
+          minecraftVersion: '1.16.5',
+          installed: false,
+          mods: []
+        },
+        {
+          id: 'vanilla-1-12-2',
+          name: 'Minecraft 1.12.2',
+          description: 'Классическая версия с огромным количеством модов. Самая популярная версия для модпаков.',
+          minecraftVersion: '1.12.2',
           installed: false,
           mods: []
         }

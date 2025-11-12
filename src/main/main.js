@@ -1,0 +1,287 @@
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs-extra');
+const os = require('os');
+
+// Импорт утилит
+const MinecraftDownloader = require('../utils/minecraft-downloader');
+const JavaDownloader = require('../utils/java-downloader');
+const MinecraftLauncher = require('../utils/minecraft-launcher');
+const ConfigManager = require('../utils/config-manager');
+
+let mainWindow;
+let configManager;
+let minecraftDownloader;
+let javaDownloader;
+let minecraftLauncher;
+
+// Получение пути к директории лаунчера
+function getLauncherDir() {
+  const homeDir = os.homedir();
+  return path.join(homeDir, '.minecraft-custom-launcher');
+}
+
+function createWindow() {
+  // Загрузка конфигурации
+  configManager = new ConfigManager(getLauncherDir());
+  const config = configManager.getConfig();
+
+  mainWindow = new BrowserWindow({
+    width: config.windowWidth || 1200,
+    height: config.windowHeight || 750,
+    minWidth: 900,
+    minHeight: 600,
+    frame: true,
+    backgroundColor: '#0f0f0f',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true
+    },
+    icon: path.join(__dirname, '../../assets/icon.png')
+  });
+
+  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  // Открыть DevTools в режиме разработки
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.openDevTools();
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  // Инициализация утилит
+  minecraftDownloader = new MinecraftDownloader(getLauncherDir());
+  javaDownloader = new JavaDownloader(getLauncherDir());
+  minecraftLauncher = new MinecraftLauncher(getLauncherDir());
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// ========== IPC Handlers ==========
+
+// Получение конфигурации
+ipcMain.handle('get-config', async () => {
+  return configManager.getConfig();
+});
+
+// Сохранение конфигурации
+ipcMain.handle('save-config', async (event, config) => {
+  configManager.saveConfig(config);
+  return { success: true };
+});
+
+// Получение списка сборок
+ipcMain.handle('get-modpacks', async () => {
+  return configManager.getModpacks();
+});
+
+// Добавление сборки
+ipcMain.handle('add-modpack', async (event, modpack) => {
+  configManager.addModpack(modpack);
+  return { success: true };
+});
+
+// Проверка установки Java
+ipcMain.handle('check-java', async () => {
+  return await javaDownloader.checkJava();
+});
+
+// Загрузка Java
+ipcMain.handle('download-java', async (event) => {
+  return new Promise((resolve, reject) => {
+    javaDownloader.download(
+      (progress) => {
+        mainWindow.webContents.send('download-progress', {
+          type: 'java',
+          progress: progress
+        });
+      },
+      (error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve({ success: true });
+        }
+      }
+    );
+  });
+});
+
+// Проверка установки Minecraft
+ipcMain.handle('check-minecraft', async (event, version) => {
+  return await minecraftDownloader.checkMinecraft(version);
+});
+
+// Загрузка Minecraft
+ipcMain.handle('download-minecraft', async (event, version) => {
+  return new Promise((resolve, reject) => {
+    minecraftDownloader.download(
+      version,
+      (progress) => {
+        mainWindow.webContents.send('download-progress', {
+          type: 'minecraft',
+          version: version,
+          progress: progress
+        });
+      },
+      (error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve({ success: true });
+        }
+      }
+    );
+  });
+});
+
+// Запуск Minecraft
+ipcMain.handle('launch-minecraft', async (event, options) => {
+  const config = configManager.getConfig();
+
+  return new Promise((resolve, reject) => {
+    minecraftLauncher.launch({
+      version: options.version,
+      username: options.username || config.username || 'Player',
+      memory: options.memory || config.allocatedMemory || 2048,
+      javaPath: javaDownloader.getJavaPath(),
+      gameDir: path.join(getLauncherDir(), 'instances', options.modpackId || 'default')
+    }, (error, process) => {
+      if (error) {
+        reject(error);
+      } else {
+        mainWindow.webContents.send('game-started', { pid: process.pid });
+        resolve({ success: true, pid: process.pid });
+      }
+    });
+  });
+});
+
+// Открыть директорию игры
+ipcMain.handle('open-game-dir', async () => {
+  const gameDir = getLauncherDir();
+  await fs.ensureDir(gameDir);
+  shell.openPath(gameDir);
+  return { success: true };
+});
+
+// Получить путь к директории лаунчера
+ipcMain.handle('get-launcher-dir', async () => {
+  return getLauncherDir();
+});
+
+// Получить системную информацию
+ipcMain.handle('get-system-info', async () => {
+  const totalMemory = Math.floor(os.totalmem() / 1024 / 1024); // MB
+  const freeMemory = Math.floor(os.freemem() / 1024 / 1024); // MB
+
+  return {
+    platform: os.platform(),
+    arch: os.arch(),
+    totalMemory: totalMemory,
+    freeMemory: freeMemory,
+    cpus: os.cpus().length
+  };
+});
+
+// Установка сборки
+ipcMain.handle('install-modpack', async (event, modpackId) => {
+  const modpack = configManager.getModpack(modpackId);
+  if (!modpack) {
+    throw new Error('Modpack not found');
+  }
+
+  // 1. Проверка и загрузка Java
+  const javaInstalled = await javaDownloader.checkJava();
+  if (!javaInstalled) {
+    mainWindow.webContents.send('install-status', {
+      modpackId: modpackId,
+      status: 'downloading-java'
+    });
+
+    await new Promise((resolve, reject) => {
+      javaDownloader.download(
+        (progress) => {
+          mainWindow.webContents.send('download-progress', {
+            type: 'java',
+            progress: progress
+          });
+        },
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  // 2. Загрузка Minecraft
+  mainWindow.webContents.send('install-status', {
+    modpackId: modpackId,
+    status: 'downloading-minecraft'
+  });
+
+  const minecraftInstalled = await minecraftDownloader.checkMinecraft(modpack.minecraftVersion);
+  if (!minecraftInstalled) {
+    await new Promise((resolve, reject) => {
+      minecraftDownloader.download(
+        modpack.minecraftVersion,
+        (progress) => {
+          mainWindow.webContents.send('download-progress', {
+            type: 'minecraft',
+            version: modpack.minecraftVersion,
+            progress: progress
+          });
+        },
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        }
+      );
+    });
+  }
+
+  // 3. Установка модов (если есть)
+  if (modpack.mods && modpack.mods.length > 0) {
+    mainWindow.webContents.send('install-status', {
+      modpackId: modpackId,
+      status: 'installing-mods'
+    });
+
+    const instanceDir = path.join(getLauncherDir(), 'instances', modpackId, 'mods');
+    await fs.ensureDir(instanceDir);
+
+    // Здесь будет логика загрузки модов
+    // TODO: Реализовать загрузку модов из URLs
+  }
+
+  // Отметить сборку как установленную
+  modpack.installed = true;
+  configManager.updateModpack(modpackId, modpack);
+
+  mainWindow.webContents.send('install-status', {
+    modpackId: modpackId,
+    status: 'completed'
+  });
+
+  return { success: true };
+});
+
+console.log('Minecraft Launcher started successfully');

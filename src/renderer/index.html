@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Launcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Навигация -->
+    <nav class="sidebar">
+      <div class="logo">
+        <h1>MC Launcher</h1>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item active" data-page="home">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 3L2 9h3v8h4v-6h2v6h4V9h3l-8-6z"/>
+          </svg>
+          <span>Главная</span>
+        </li>
+        <li class="nav-item" data-page="settings">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 6a4 4 0 100 8 4 4 0 000-8zM8 10a2 2 0 114 0 2 2 0 01-4 0z"/>
+            <path d="M10 2a1 1 0 011 1v1.323a7.5 7.5 0 012.636 1.05l.933-.933a1 1 0 011.414 1.414l-.933.933A7.5 7.5 0 0116.677 9H18a1 1 0 110 2h-1.323a7.5 7.5 0 01-1.05 2.636l.933.933a1 1 0 01-1.414 1.414l-.933-.933A7.5 7.5 0 0111 16.677V18a1 1 0 11-2 0v-1.323a7.5 7.5 0 01-2.636-1.05l-.933.933a1 1 0 01-1.414-1.414l.933-.933A7.5 7.5 0 013.323 11H2a1 1 0 110-2h1.323a7.5 7.5 0 011.05-2.636l-.933-.933a1 1 0 111.414-1.414l.933.933A7.5 7.5 0 019 4.323V3a1 1 0 011-1z"/>
+          </svg>
+          <span>Настройки</span>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Основной контент -->
+    <main class="content">
+      <!-- Главная страница -->
+      <div class="page active" id="home-page">
+        <header class="page-header">
+          <h2>Выберите сборку</h2>
+          <div class="user-info">
+            <span id="username-display">Player</span>
+          </div>
+        </header>
+
+        <div class="modpacks-grid" id="modpacks-grid">
+          <!-- Сборки будут загружены динамически -->
+        </div>
+      </div>
+
+      <!-- Страница настроек -->
+      <div class="page" id="settings-page">
+        <header class="page-header">
+          <h2>Настройки</h2>
+        </header>
+
+        <div class="settings-container">
+          <div class="settings-section">
+            <h3>Профиль</h3>
+            <div class="setting-item">
+              <label for="username-input">Имя пользователя</label>
+              <input type="text" id="username-input" placeholder="Player">
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Производительность</h3>
+            <div class="setting-item">
+              <label for="memory-slider">
+                Выделенная память: <span id="memory-value">2048</span> MB
+              </label>
+              <input type="range" id="memory-slider" min="1024" max="16384" step="512" value="2048">
+              <div class="memory-info">
+                <span>Всего: <span id="total-memory">—</span> MB</span>
+                <span>Свободно: <span id="free-memory">—</span> MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Размер окна</h3>
+            <div class="setting-item">
+              <label for="window-size">Размер окна лаунчера</label>
+              <select id="window-size">
+                <option value="900x600">Маленький (900x600)</option>
+                <option value="1200x750" selected>Средний (1200x750)</option>
+                <option value="1400x900">Большой (1400x900)</option>
+                <option value="1600x1000">Очень большой (1600x1000)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Директории</h3>
+            <div class="setting-item">
+              <label>Директория игры</label>
+              <div class="dir-display">
+                <span id="game-dir-path">—</span>
+                <button class="btn btn-secondary" id="open-dir-btn">Открыть</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="save-settings-btn">Сохранить настройки</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Модальное окно для деталей сборки -->
+  <div class="modal" id="modpack-modal">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <div class="modal-body">
+        <img id="modal-image" src="" alt="" class="modal-image">
+        <div class="modal-info">
+          <h2 id="modal-title">—</h2>
+          <p id="modal-description">—</p>
+          <div class="modal-meta">
+            <span>Версия: <strong id="modal-version">—</strong></span>
+            <span id="modal-status">—</span>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary btn-large" id="modal-action-btn">Установить</button>
+            <button class="btn btn-success btn-large" id="modal-play-btn" style="display: none;">Играть</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Прогресс-бар -->
+  <div class="progress-overlay" id="progress-overlay" style="display: none;">
+    <div class="progress-container">
+      <h3 id="progress-title">Загрузка...</h3>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <p id="progress-text">0%</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

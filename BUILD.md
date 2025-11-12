@@ -11,9 +11,7 @@
 1. Перейдите в раздел **Actions** в вашем GitHub репозитории
 2. Выберите workflow **"Build Minecraft Launcher"**
 3. Дождитесь завершения сборки (обычно 5-10 минут)
-4. Скачайте артефакты:
-   - `minecraft-launcher-windows` - Windows .exe установщик
-   - `minecraft-launcher-linux` - Linux AppImage
+4. Скачайте артефакт `minecraft-launcher-windows` - Windows .exe установщик
 
 ### Создание релиза с тегом
 
@@ -57,12 +55,8 @@ npm run build:win
 
 ### Linux
 
-```bash
-npm install
-npm run build:linux
-```
-
-Результат: `dist/Minecraft-Launcher-1.0.0.AppImage`
+Сборка под Linux запланирована для следующих версий.
+Пока используйте только Windows сборку.
 
 ## Подготовка иконки .ico (для Windows)
 
@@ -114,9 +108,8 @@ npm install
 
 ## Размер итогового файла
 
-- Установщик Windows: ~150-200 MB
+- Установщик Windows (.exe): ~150-200 MB
 - Распакованное приложение: ~250-300 MB
-- Linux AppImage: ~180-220 MB
 
 Размер связан с встроенным Electron и зависимостями Node.js.
 

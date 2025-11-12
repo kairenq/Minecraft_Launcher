@@ -163,7 +163,14 @@ class MinecraftLauncher {
       libraries.push(versionJar);
 
       const separator = process.platform === 'win32' ? ';' : ':';
+
+      // ВАЖНО: spawn() передает аргументы напрямую процессу без shell,
+      // поэтому мы НЕ должны добавлять кавычки сами - spawn() обработает это автоматически
+      // Просто соединяем пути разделителем
       const classpath = libraries.join(separator);
+
+      console.log('Библиотек в classpath:', libraries.length);
+      console.log('Пример первой библиотеки:', libraries[0]);
 
       // Генерация UUID для offline режима
       const uuid = this.generateUUID(username);

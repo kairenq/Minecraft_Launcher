@@ -249,33 +249,98 @@ class MinecraftLauncher {
       console.log('Первые JVM аргументы:', jvmArgs.slice(0, 3).join(' '));
       console.log('\nЗапуск процесса Java...\n');
 
+      // Создаем файл для логов
+      const logsDir = path.join(gameDir, 'logs');
+      await fs.ensureDir(logsDir);
+      const logFile = path.join(logsDir, 'launcher.log');
+      const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+      // Записываем команду запуска в лог
+      logStream.write('\n' + '='.repeat(80) + '\n');
+      logStream.write(`ЗАПУСК: ${new Date().toISOString()}\n`);
+      logStream.write(`Версия: ${version}\n`);
+      logStream.write(`Пользователь: ${username}\n`);
+      logStream.write(`RAM: ${memory} MB\n`);
+      logStream.write(`Java: ${javaPath}\n`);
+      logStream.write(`GameDir: ${gameDir}\n`);
+      logStream.write('\nПОЛНАЯ КОМАНДА:\n');
+      logStream.write(`"${javaPath}" ${allArgs.join(' ')}\n`);
+      logStream.write('='.repeat(80) + '\n\n');
+
+      console.log('\n💾 Логи записываются в:', logFile);
+      console.log('\n📋 ПОЛНАЯ КОМАНДА ЗАПУСКА (для ручной проверки):');
+      console.log(`"${javaPath}" ${allArgs.slice(0, 10).join(' ')} ...`);
+      console.log('(полная команда записана в лог-файл)\n');
+
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {
         cwd: gameDir,
         stdio: ['ignore', 'pipe', 'pipe'] // Захват вывода для отладки
       });
 
-      // Вывод stdout и stderr в консоль
+      let hasOutput = false;
+      let errorOutput = '';
+      let startTime = Date.now();
+
+      // Вывод stdout и stderr в консоль И в файл
       gameProcess.stdout.on('data', (data) => {
-        console.log('[Minecraft]', data.toString().trim());
+        hasOutput = true;
+        const text = data.toString();
+        console.log('[Minecraft]', text.trim());
+        logStream.write('[STDOUT] ' + text);
       });
 
       gameProcess.stderr.on('data', (data) => {
-        console.error('[Minecraft ERROR]', data.toString().trim());
+        hasOutput = true;
+        const text = data.toString();
+        errorOutput += text;
+        console.error('[Minecraft ERROR]', text.trim());
+        logStream.write('[STDERR] ' + text);
       });
 
       gameProcess.on('error', (error) => {
-        console.error('Ошибка при запуске процесса:', error);
+        const errorMsg = `Ошибка при запуске процесса: ${error.message}`;
+        console.error(errorMsg);
+        logStream.write(`\n[PROCESS ERROR] ${errorMsg}\n`);
+        logStream.end();
         callback(new Error(`Ошибка запуска процесса Java: ${error.message}`));
       });
 
       gameProcess.on('close', (code) => {
+        const runTime = Date.now() - startTime;
+        const endMsg = `\n[ЗАВЕРШЕНИЕ] Код выхода: ${code}, Время работы: ${runTime}ms\n`;
+
+        logStream.write(endMsg);
+        logStream.end();
+
         if (code === 0) {
-          console.log(`✓ Minecraft завершён успешно`);
+          console.log(`✓ Minecraft завершён успешно (работал ${(runTime/1000).toFixed(1)}с)`);
         } else {
-          console.log(`✗ Minecraft завершён с кодом ${code}`);
+          console.log(`✗ Minecraft завершён с кодом ${code} (работал ${(runTime/1000).toFixed(1)}с)`);
+
+          // Если процесс упал быстро (меньше 5 секунд), это ошибка
+          if (runTime < 5000) {
+            console.error('\n⚠️  ПРОЦЕСС УПАЛ СРАЗУ ПОСЛЕ ЗАПУСКА!');
+            console.error('Последние ошибки:');
+            if (errorOutput) {
+              console.error(errorOutput.split('\n').slice(-10).join('\n'));
+            }
+            console.error('\nПолные логи в:', logFile);
+          }
         }
       });
+
+      // Детектируем мгновенное падение
+      setTimeout(() => {
+        try {
+          // Проверяем что процесс все еще жив
+          process.kill(gameProcess.pid, 0);
+          console.log('✓ Процесс стабилен (работает более 2 секунд)');
+        } catch (e) {
+          console.error('\n⚠️  ПРОЦЕСС УПАЛ В ПЕРВЫЕ 2 СЕКУНДЫ!');
+          console.error('Проверьте логи:', logFile);
+        }
+      }, 2000);
 
       console.log('✓ Процесс запущен с PID:', gameProcess.pid);
       callback(null, gameProcess);

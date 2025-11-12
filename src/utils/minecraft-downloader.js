@@ -94,18 +94,72 @@ class MinecraftDownloader {
   }
 
   async downloadJsonFile(url, dest, retries = 3) {
-    await this.downloadFile(url, dest, null, retries);
+    // Для JSON файлов используем прямое скачивание (не stream), чтобы избежать проблем с кодировкой
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        console.log(`Скачивание JSON: ${url} (попытка ${attempt + 1}/${retries})`);
 
-    // Валидация JSON
-    try {
-      const content = await fs.readJson(dest);
-      return content;
-    } catch (error) {
-      // JSON невалиден - удаляем файл
-      if (fs.existsSync(dest)) {
-        await fs.remove(dest);
+        const response = await axios({
+          url: url,
+          method: 'GET',
+          responseType: 'text', // Важно: text, не stream
+          validateStatus: (status) => status === 200
+        });
+
+        const rawContent = response.data;
+        console.log(`✓ Получено ${rawContent.length} символов`);
+        console.log(`  Первые 50: ${rawContent.substring(0, 50)}`);
+
+        // Проверяем на HTML
+        if (rawContent.includes('<!DOCTYPE') || rawContent.includes('<html')) {
+          throw new Error('Сервер вернул HTML страницу вместо JSON');
+        }
+
+        // Очищаем от BOM и пробельных символов по краям
+        const cleanedContent = rawContent.replace(/^\uFEFF/, '').trim();
+
+        // Проверяем валидность JSON
+        let jsonData;
+        try {
+          jsonData = JSON.parse(cleanedContent);
+        } catch (parseError) {
+          console.error(`❌ Ошибка парсинга JSON:`);
+          console.error(`   Первые 200 символов: ${cleanedContent.substring(0, 200)}`);
+          console.error(`   Последние 200 символов: ${cleanedContent.substring(cleanedContent.length - 200)}`);
+
+          // Hex dump первых 50 байт
+          const hexDump = [];
+          for (let i = 0; i < Math.min(50, cleanedContent.length); i++) {
+            hexDump.push(cleanedContent.charCodeAt(i).toString(16).padStart(2, '0'));
+          }
+          console.error(`   HEX первых 50 байт: ${hexDump.join(' ')}`);
+
+          throw parseError;
+        }
+
+        // Сохраняем файл
+        await fs.ensureDir(path.dirname(dest));
+        await fs.writeFile(dest, cleanedContent, 'utf-8');
+
+        console.log(`✓ JSON валиден и сохранён: ${path.basename(dest)}`);
+        return jsonData;
+
+      } catch (error) {
+        console.error(`❌ Ошибка скачивания JSON (попытка ${attempt + 1}/${retries}):`, error.message);
+
+        // Удаляем битый файл если он был создан
+        if (fs.existsSync(dest)) {
+          await fs.remove(dest);
+        }
+
+        // Если это последняя попытка - выбрасываем ошибку
+        if (attempt === retries - 1) {
+          throw new Error(`Не удалось скачать JSON после ${retries} попыток: ${url}\nОшибка: ${error.message}`);
+        }
+
+        // Ждём перед следующей попыткой
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
-      throw new Error(`Скачанный файл не является валидным JSON: ${dest}\nОшибка: ${error.message}\nURL: ${url}`);
     }
   }
 

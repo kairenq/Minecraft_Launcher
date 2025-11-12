@@ -162,15 +162,44 @@ class MinecraftLauncher {
       const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
       libraries.push(versionJar);
 
-      const separator = process.platform === 'win32' ? ';' : ':';
+      // КРИТИЧНО: Проверяем существование всех файлов в classpath
+      console.log('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===');
+      logStream.write('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===\n');
 
-      // ВАЖНО: spawn() передает аргументы напрямую процессу без shell,
-      // поэтому мы НЕ должны добавлять кавычки сами - spawn() обработает это автоматически
-      // Просто соединяем пути разделителем
+      let missingFiles = [];
+      for (let i = 0; i < libraries.length; i++) {
+        const lib = libraries[i];
+        const exists = fs.existsSync(lib);
+        if (!exists) {
+          missingFiles.push(lib);
+          console.error(`❌ ОТСУТСТВУЕТ [${i}]: ${lib}`);
+          logStream.write(`[MISSING] ${lib}\n`);
+        } else {
+          const stats = fs.statSync(lib);
+          if (i < 5 || i === libraries.length - 1) { // Показываем первые 5 и последний (client.jar)
+            console.log(`✓ [${i}] ${path.basename(lib)} (${(stats.size / 1024).toFixed(1)} KB)`);
+          }
+        }
+      }
+
+      if (missingFiles.length > 0) {
+        const errorMsg = `КРИТИЧЕСКАЯ ОШИБКА: Отсутствуют ${missingFiles.length} файлов библиотек!\nПервые отсутствующие:\n${missingFiles.slice(0, 5).join('\n')}`;
+        console.error('\n' + errorMsg);
+        logStream.write('\n' + errorMsg + '\n');
+        throw new Error(`Отсутствуют ${missingFiles.length} файлов. Возможно, Minecraft скачался не полностью. Попробуйте переустановить версию.`);
+      }
+
+      console.log(`Всего библиотек: ${libraries.length}, все файлы найдены ✓`);
+      logStream.write(`Всего библиотек: ${libraries.length}\n`);
+
+      const separator = process.platform === 'win32' ? ';' : ':';
       const classpath = libraries.join(separator);
 
-      console.log('Библиотек в classpath:', libraries.length);
-      console.log('Пример первой библиотеки:', libraries[0]);
+      // Логируем финальную команду
+      console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
+      logStream.write('\n=== ФИНАЛЬНАЯ КОМАНДА ===\n');
+      console.log('Java:', javaPath);
+      logStream.write(`Java: ${javaPath}\n`);
 
       // Генерация UUID для offline режима
       const uuid = this.generateUUID(username);

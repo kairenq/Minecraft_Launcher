@@ -93,35 +93,63 @@ class MinecraftDownloader {
 
       // Загрузка библиотек
       onProgress({ stage: 'Загрузка библиотек', percent: 40 });
-      const libraries = versionData.libraries.filter(lib => {
-        // Фильтрация библиотек по ОС
+
+      const osName = process.platform === 'win32' ? 'windows' :
+                     process.platform === 'darwin' ? 'osx' : 'linux';
+
+      // Используем ту же логику фильтрации, что и в launcher
+      const librariesToDownload = [];
+      for (const lib of versionData.libraries) {
+        let allowed = true;
+
+        // Проверка правил для библиотеки (та же логика, что в minecraft-launcher.js)
         if (lib.rules) {
+          allowed = false;
           for (const rule of lib.rules) {
-            if (rule.os) {
-              const osName = process.platform === 'win32' ? 'windows' :
-                            process.platform === 'darwin' ? 'osx' : 'linux';
-              if (rule.os.name && rule.os.name !== osName) {
-                return rule.action === 'disallow';
+            if (rule.action === 'allow') {
+              if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                allowed = true;
+              }
+            } else if (rule.action === 'disallow') {
+              if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                allowed = false;
               }
             }
           }
         }
-        return lib.downloads && lib.downloads.artifact;
-      });
 
-      for (let i = 0; i < libraries.length; i++) {
-        const lib = libraries[i];
-        if (lib.downloads && lib.downloads.artifact) {
-          const artifact = lib.downloads.artifact;
-          const libPath = path.join(this.librariesDir, artifact.path);
-
-          if (!fs.existsSync(libPath)) {
-            await this.downloadFile(artifact.url, libPath);
-          }
-
-          const progress = 40 + ((i / libraries.length) * 30);
-          onProgress({ stage: `Загрузка библиотек (${i + 1}/${libraries.length})`, percent: Math.floor(progress) });
+        if (allowed && lib.downloads && lib.downloads.artifact) {
+          librariesToDownload.push({
+            artifact: lib.downloads.artifact,
+            name: lib.name
+          });
         }
+
+        // Нативные библиотеки
+        if (allowed && lib.downloads && lib.downloads.classifiers && lib.natives) {
+          const nativeKey = lib.natives[osName];
+          if (nativeKey && lib.downloads.classifiers[nativeKey]) {
+            librariesToDownload.push({
+              artifact: lib.downloads.classifiers[nativeKey],
+              name: lib.name + ' (native)'
+            });
+          }
+        }
+      }
+
+      console.log(`Найдено библиотек для скачивания: ${librariesToDownload.length}`);
+
+      for (let i = 0; i < librariesToDownload.length; i++) {
+        const { artifact, name } = librariesToDownload[i];
+        const libPath = path.join(this.librariesDir, artifact.path);
+
+        if (!fs.existsSync(libPath)) {
+          console.log(`Скачивание [${i + 1}/${librariesToDownload.length}]: ${name}`);
+          await this.downloadFile(artifact.url, libPath);
+        }
+
+        const progress = 40 + ((i / librariesToDownload.length) * 30);
+        onProgress({ stage: `Загрузка библиотек (${i + 1}/${librariesToDownload.length})`, percent: Math.floor(progress) });
       }
 
       // Загрузка ассетов
@@ -166,6 +194,21 @@ class MinecraftDownloader {
 
   getVersionJson(version) {
     return path.join(this.versionsDir, version, `${version}.json`);
+  }
+
+  checkOsRule(osRule, osName) {
+    if (osRule.name && osRule.name !== osName) {
+      return false;
+    }
+
+    if (osRule.arch) {
+      const arch = process.arch === 'x64' ? 'x86' : process.arch;
+      if (osRule.arch !== arch) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
 

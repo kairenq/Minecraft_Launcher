@@ -10,6 +10,51 @@ class ConfigManager {
     this.ensureConfigExists();
   }
 
+  getDefaultModpacks() {
+    return [
+      {
+        id: 'vanilla-1-20-1',
+        name: 'Minecraft 1.20.1',
+        description: 'Последняя стабильная версия Minecraft. Включает новые биомы, мобов и блоки.',
+        minecraftVersion: '1.20.1',
+        installed: false,
+        mods: []
+      },
+      {
+        id: 'vanilla-1-19-4',
+        name: 'Minecraft 1.19.4',
+        description: 'The Wild Update - новые биомы болот и глубокой тьмы, Warden и Ancient Cities.',
+        minecraftVersion: '1.19.4',
+        installed: false,
+        mods: []
+      },
+      {
+        id: 'vanilla-1-18-2',
+        name: 'Minecraft 1.18.2',
+        description: 'Caves & Cliffs - обновленная генерация мира, новые пещеры и горы.',
+        minecraftVersion: '1.18.2',
+        installed: false,
+        mods: []
+      },
+      {
+        id: 'vanilla-1-16-5',
+        name: 'Minecraft 1.16.5',
+        description: 'Nether Update - обновленный ад с новыми биомами, мобами и блоками. Популярна для модов.',
+        minecraftVersion: '1.16.5',
+        installed: false,
+        mods: []
+      },
+      {
+        id: 'vanilla-1-12-2',
+        name: 'Minecraft 1.12.2',
+        description: 'Классическая версия с огромным количеством модов. Самая популярная версия для модпаков.',
+        minecraftVersion: '1.12.2',
+        installed: false,
+        mods: []
+      }
+    ];
+  }
+
   ensureConfigExists() {
     fs.ensureDirSync(this.launcherDir);
 
@@ -22,57 +67,40 @@ class ConfigManager {
         windowHeight: 750,
         theme: 'dark',
         lastModpack: null,
-        javaPath: null
+        javaPath: null,
+        configVersion: 2 // Версия конфигурации для миграций
       };
       fs.writeJsonSync(this.configPath, defaultConfig, { spaces: 2 });
     }
 
-    // Создание списка сборок по умолчанию
-    if (!fs.existsSync(this.modpacksPath)) {
-      const defaultModpacks = [
-        {
-          id: 'vanilla-1-20-1',
-          name: 'Minecraft 1.20.1',
-          description: 'Последняя стабильная версия Minecraft. Включает новые биомы, мобов и блоки.',
-          minecraftVersion: '1.20.1',
-          installed: false,
-          mods: []
-        },
-        {
-          id: 'vanilla-1-19-4',
-          name: 'Minecraft 1.19.4',
-          description: 'The Wild Update - новые биомы болот и глубокой тьмы, Warden и Ancient Cities.',
-          minecraftVersion: '1.19.4',
-          installed: false,
-          mods: []
-        },
-        {
-          id: 'vanilla-1-18-2',
-          name: 'Minecraft 1.18.2',
-          description: 'Caves & Cliffs - обновленная генерация мира, новые пещеры и горы.',
-          minecraftVersion: '1.18.2',
-          installed: false,
-          mods: []
-        },
-        {
-          id: 'vanilla-1-16-5',
-          name: 'Minecraft 1.16.5',
-          description: 'Nether Update - обновленный ад с новыми биомами, мобами и блоками. Популярна для модов.',
-          minecraftVersion: '1.16.5',
-          installed: false,
-          mods: []
-        },
-        {
-          id: 'vanilla-1-12-2',
-          name: 'Minecraft 1.12.2',
-          description: 'Классическая версия с огромным количеством модов. Самая популярная версия для модпаков.',
-          minecraftVersion: '1.12.2',
-          installed: false,
-          mods: []
-        }
-      ];
-      fs.writeJsonSync(this.modpacksPath, defaultModpacks, { spaces: 2 });
+    // Обновление списка сборок - ВСЕГДА пересоздаем с актуальными версиями
+    // Проверяем существующие установленные версии
+    let installedStates = {};
+    if (fs.existsSync(this.modpacksPath)) {
+      try {
+        const oldModpacks = fs.readJsonSync(this.modpacksPath);
+        // Сохраняем статус установки для каждой версии
+        oldModpacks.forEach(mp => {
+          if (mp.installed && mp.id.startsWith('vanilla-')) {
+            installedStates[mp.id] = true;
+          }
+        });
+      } catch (e) {
+        console.error('Error reading old modpacks:', e);
+      }
     }
+
+    // Создаем новый список с актуальными данными
+    const defaultModpacks = this.getDefaultModpacks();
+    // Восстанавливаем статусы установки
+    defaultModpacks.forEach(mp => {
+      if (installedStates[mp.id]) {
+        mp.installed = true;
+      }
+    });
+
+    fs.writeJsonSync(this.modpacksPath, defaultModpacks, { spaces: 2 });
+    console.log('Modpacks list updated:', defaultModpacks.length, 'versions');
   }
 
   getConfig() {

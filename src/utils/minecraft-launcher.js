@@ -87,13 +87,45 @@ class MinecraftLauncher {
     try {
       const { version, username, memory, javaPath, gameDir } = options;
 
+      console.log('\n=== ЗАПУСК MINECRAFT ===');
+      console.log('Версия:', version);
+      console.log('Пользователь:', username);
+      console.log('Память (RAM):', memory, 'MB');
+      console.log('Java путь:', javaPath);
+      console.log('Директория игры:', gameDir);
+
+      // Проверка существования Java
+      if (!javaPath || !fs.existsSync(javaPath)) {
+        const error = `Java не найдена по пути: ${javaPath}.\nПереустановите сборку для автоматической загрузки Java.`;
+        console.error(error);
+        throw new Error(error);
+      }
+
       // Определение ОС
       const osName = process.platform === 'win32' ? 'windows' :
                      process.platform === 'darwin' ? 'osx' : 'linux';
 
+      console.log('Операционная система:', osName);
+
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, version, `${version}.json`);
+
+      if (!fs.existsSync(versionJsonPath)) {
+        const error = `Файл версии не найден: ${versionJsonPath}.\nПереустановите сборку.`;
+        console.error(error);
+        throw new Error(error);
+      }
+
+      const versionJarPath = path.join(this.versionsDir, version, `${version}.jar`);
+      if (!fs.existsSync(versionJarPath)) {
+        const error = `JAR файл игры не найден: ${versionJarPath}.\nПереустановите сборку.`;
+        console.error(error);
+        throw new Error(error);
+      }
+
+      console.log('Загрузка конфигурации версии...');
       const versionData = await fs.readJson(versionJsonPath);
+      console.log('Главный класс:', versionData.mainClass);
 
       // Создание директорий
       await fs.ensureDir(gameDir);
@@ -210,26 +242,42 @@ class MinecraftLauncher {
       // Полная команда
       const allArgs = [...jvmArgs, mainClass, ...gameArgs];
 
-      console.log('Запуск Minecraft...');
-      console.log('Java:', javaPath);
-      console.log('Версия:', version);
-      console.log('Пользователь:', username);
-      console.log('Память:', memory, 'MB');
+      console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
+      console.log('Аргументов JVM:', jvmArgs.length);
+      console.log('Аргументов игры:', gameArgs.length);
+      console.log('RAM выделено:', memory, 'MB');
+      console.log('Первые JVM аргументы:', jvmArgs.slice(0, 3).join(' '));
+      console.log('\nЗапуск процесса Java...\n');
 
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {
         cwd: gameDir,
-        stdio: 'inherit'
+        stdio: ['ignore', 'pipe', 'pipe'] // Захват вывода для отладки
+      });
+
+      // Вывод stdout и stderr в консоль
+      gameProcess.stdout.on('data', (data) => {
+        console.log('[Minecraft]', data.toString().trim());
+      });
+
+      gameProcess.stderr.on('data', (data) => {
+        console.error('[Minecraft ERROR]', data.toString().trim());
       });
 
       gameProcess.on('error', (error) => {
-        callback(new Error(`Ошибка запуска: ${error.message}`));
+        console.error('Ошибка при запуске процесса:', error);
+        callback(new Error(`Ошибка запуска процесса Java: ${error.message}`));
       });
 
       gameProcess.on('close', (code) => {
-        console.log(`Minecraft завершён с кодом ${code}`);
+        if (code === 0) {
+          console.log(`✓ Minecraft завершён успешно`);
+        } else {
+          console.log(`✗ Minecraft завершён с кодом ${code}`);
+        }
       });
 
+      console.log('✓ Процесс запущен с PID:', gameProcess.pid);
       callback(null, gameProcess);
     } catch (error) {
       callback(new Error(`Ошибка при подготовке запуска: ${error.message}`));

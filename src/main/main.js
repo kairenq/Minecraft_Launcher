@@ -83,7 +83,15 @@ ipcMain.handle('get-config', async () => {
 
 // Сохранение конфигурации
 ipcMain.handle('save-config', async (event, config) => {
+  const oldConfig = configManager.getConfig();
   configManager.saveConfig(config);
+
+  // Применение изменения размера окна
+  if (mainWindow && (config.windowWidth !== oldConfig.windowWidth || config.windowHeight !== oldConfig.windowHeight)) {
+    mainWindow.setSize(config.windowWidth, config.windowHeight);
+    console.log(`Window resized to ${config.windowWidth}x${config.windowHeight}`);
+  }
+
   return { success: true };
 });
 

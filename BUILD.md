@@ -58,27 +58,26 @@ npm run build:win
 Сборка под Linux запланирована для следующих версий.
 Пока используйте только Windows сборку.
 
-## Подготовка иконки .ico (для Windows)
+## Добавление своей иконки (опционально)
 
-GitHub Actions будет использовать `assets/icon.png` если нет `.ico`.
+В текущей версии используется дефолтная иконка Electron.
 
-Для создания .ico файла:
+Для добавления своей иконки:
 
-1. Используйте онлайн конвертер (например, https://convertio.co/ru/png-ico/)
-2. Загрузите `assets/icon.svg` или создайте PNG 256x256
-3. Конвертируйте в .ico с размерами: 16, 32, 48, 64, 128, 256
-4. Сохраните как `assets/icon.ico`
+1. Создайте .ico файл с размерами: 16, 32, 48, 64, 128, 256
+2. Сохраните как `assets/icon.ico`
+3. Добавьте в `package.json` в секцию `"win"`:
+   ```json
+   "icon": "assets/icon.ico"
+   ```
 
-Или используйте ImageMagick локально:
+Можно использовать онлайн конвертер:
+- https://convertio.co/ru/png-ico/
+- https://icoconvert.com/
 
+Или ImageMagick локально:
 ```bash
-# Установка ImageMagick
-# Windows: https://imagemagick.org/script/download.php#windows
-# Linux: sudo apt install imagemagick
-# macOS: brew install imagemagick
-
-# Конвертация
-convert assets/icon.png -define icon:auto-resize=256,128,64,48,32,16 assets/icon.ico
+convert your-image.png -define icon:auto-resize=256,128,64,48,32,16 assets/icon.ico
 ```
 
 ## Устранение проблем сборки

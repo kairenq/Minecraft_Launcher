@@ -338,7 +338,31 @@ class MinecraftLauncher {
       // separator уже определён выше (строка 244), используем classpath оттуда
       console.log(`Classpath: ${filteredLibraries.length} JAR файлов`);
       console.log(`Длина classpath: ${classpath.length} символов`);
+
+      // КРИТИЧНО: Проверяем что client.jar в classpath!
+      const clientJarName = `${version}.jar`;
+      const hasClientJar = filteredLibraries.some(lib => lib.includes(clientJarName));
+
+      if (!hasClientJar) {
+        console.error(`\n❌ КРИТИЧЕСКАЯ ОШИБКА: Client JAR (${clientJarName}) НЕ НАЙДЕН в classpath!`);
+        console.error('Последние 5 JAR в classpath:');
+        filteredLibraries.slice(-5).forEach((lib, i) => {
+          console.error(`  [${filteredLibraries.length - 5 + i}] ${path.basename(lib)}`);
+        });
+        throw new Error(`Client JAR ${clientJarName} отсутствует в classpath!`);
+      }
+
+      console.log(`✓ Client JAR найден: ${clientJarName}`);
+      console.log(`  Позиция: ${filteredLibraries.findIndex(lib => lib.includes(clientJarName)) + 1} из ${filteredLibraries.length}`);
+
+      // Показываем последние 3 JAR (включая client.jar)
+      console.log('\nПоследние JAR файлы в classpath:');
+      filteredLibraries.slice(-3).forEach((lib, i) => {
+        console.log(`  [${filteredLibraries.length - 3 + i}] ${path.basename(lib)}`);
+      });
+
       logStream.write(`[CLASSPATH] ${filteredLibraries.length} JARs, ${classpath.length} chars\n`);
+      logStream.write(`[CLIENT JAR] Position: ${filteredLibraries.findIndex(lib => lib.includes(clientJarName)) + 1}\n`);
 
       // Собираем JVM аргументы (БЕЗ -cp если он уже есть из versionData)
       const jvmArgsNoCp = jvmArgs.filter((arg, i) => {
@@ -372,8 +396,11 @@ class MinecraftLauncher {
       logStream.write(`Classpath length: ${classpath.length} chars\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgsNoCp.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
-      logStream.write(`\n[CLASSPATH] ${classpath.substring(0, 200)}...\n\n`);
-      logStream.write('GAME ARGS:\n');
+      logStream.write(`\n=== ПОЛНЫЙ CLASSPATH (ВСЕ ${filteredLibraries.length} JAR ФАЙЛОВ) ===\n`);
+      filteredLibraries.forEach((lib, i) => {
+        logStream.write(`  [${i}] ${path.basename(lib)}\n`);
+      });
+      logStream.write('\nGAME ARGS:\n');
       gameArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('='.repeat(80) + '\n\n');
 

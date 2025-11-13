@@ -353,17 +353,42 @@ class MinecraftLauncher {
       console.log(`Создание манифеста с ${filteredLibraries.length} JAR файлами...`);
 
       // Создаём MANIFEST.MF с правильным форматом
-      // Спецификация требует: строки не больше 72 байт, продолжение с пробела
-      let manifestLines = [
+      // КРИТИЧНО: Class-Path - это ОДНА строка с путями разделёнными ПРОБЕЛАМИ!
+      // Если строка больше 72 байт, переносим с пробелом в начале
+
+      // Объединяем все пути через пробел
+      const classpathString = classPathForManifest.join(' ');
+
+      // Разбиваем на строки по 70 символов (оставляем запас до 72)
+      const manifestLines = [
         'Manifest-Version: 1.0',
-        `Main-Class: ${mainClass}`,
-        'Class-Path:'
+        `Main-Class: ${mainClass}`
       ];
 
-      // Добавляем JAR файлы по одному на строку (избегаем проблем с длиной)
-      classPathForManifest.forEach(jarPath => {
-        manifestLines.push(' ' + jarPath); // Пробел в начале = продолжение
-      });
+      // Добавляем Class-Path с переносами строк
+      let currentLine = 'Class-Path: ';
+      const words = classpathString.split(' ');
+
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+
+        // Если добавление слова превысит 70 символов, начинаем новую строку
+        if (currentLine.length + word.length + 1 > 70 && currentLine !== 'Class-Path: ') {
+          manifestLines.push(currentLine);
+          currentLine = ' ' + word; // Продолжение с пробела
+        } else {
+          if (currentLine === 'Class-Path: ') {
+            currentLine += word;
+          } else {
+            currentLine += ' ' + word;
+          }
+        }
+      }
+
+      // Добавляем последнюю строку
+      if (currentLine.length > 0) {
+        manifestLines.push(currentLine);
+      }
 
       // Добавляем пустую строку в конце (обязательно!)
       manifestLines.push('');

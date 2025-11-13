@@ -43,6 +43,9 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
+  // Убираем меню (File, Edit, View и т.д.)
+  mainWindow.setMenu(null);
+
   // Открыть DevTools в режиме разработки
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
@@ -118,7 +121,8 @@ ipcMain.handle('download-java', async (event) => {
       (progress) => {
         mainWindow.webContents.send('download-progress', {
           type: 'java',
-          progress: progress
+          stage: progress.stage || 'Загрузка Java',
+          percent: progress.percent || 0
         });
       },
       (error) => {
@@ -231,7 +235,8 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
           (progress) => {
             mainWindow.webContents.send('download-progress', {
               type: 'java',
-              progress: progress
+              stage: progress.stage || 'Загрузка Java',
+              percent: progress.percent || 0
             });
           },
           (error) => {

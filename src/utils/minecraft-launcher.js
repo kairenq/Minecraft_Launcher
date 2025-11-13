@@ -435,9 +435,43 @@ pause >nul
 `;
 
       await fs.writeFile(batFilePath, batContent, 'utf8');
-      console.log(`\n✓ Создан BAT файл: ${batFilePath}`);
-      console.log(`  Запустите его вручную для детальной отладки!`);
-      logStream.write(`\n[INFO] Created BAT file: ${batFilePath}\n`);
+
+      // ========== СОЗДАЁМ ВТОРОЙ BAT БЕЗ ARGFILE ==========
+      const batFilePath2 = path.join(gameDir, 'run_minecraft_direct.bat');
+      const classpathForBat = filteredLibraries.join(';');
+
+      // Создаем jvmArgs без -cp и classpath
+      const jvmArgsNoCp = jvmArgs.filter((arg, i) => {
+        if (arg === '-cp') return false;
+        if (i > 0 && jvmArgs[i-1] === '-cp') return false;
+        return true;
+      });
+
+      const batContent2 = `@echo off
+chcp 65001 >nul
+echo ========================================
+echo DIRECT RUN (БЕЗ @argfile)
+echo ========================================
+echo.
+
+cd /d "${gameDir}"
+
+"${javaPath}" ${jvmArgsNoCp.join(' ')} -cp "${classpathForBat}" ${mainClass} ${gameArgs.join(' ')}
+
+echo.
+echo ========================================
+echo Exit code: %ERRORLEVEL%
+echo ========================================
+pause
+`;
+
+      await fs.writeFile(batFilePath2, batContent2, 'utf8');
+
+      console.log(`\n✓ Создано 2 BAT файла:`);
+      console.log(`  1) ${batFilePath} (@argfile)`);
+      console.log(`  2) ${batFilePath2} (ПРЯМОЙ запуск БЕЗ argfile!)`);
+      console.log(`\n  ⚠️  Попробуй запустить ВТОРОЙ файл!`);
+      logStream.write(`\n[INFO] Created 2 BAT files for testing\n`);
 
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {

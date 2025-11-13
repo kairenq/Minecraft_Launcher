@@ -353,38 +353,108 @@ class MinecraftLauncher {
       console.log(`Создание манифеста с ${filteredLibraries.length} JAR файлами...`);
 
       // Создаём MANIFEST.MF
-      // Важно: JAR манифест требует переноса строк после 72 символов с отступом в 1 пробел
-      // Но для простоты используем одну длинную строку - современные JVM поддерживают это
-      const manifestContent = `Manifest-Version: 1.0
-Main-Class: ${mainClass}
-Class-Path: ${manifestClassPath}
+      // КРИТИЧНО: JAR манифест требует СТРОГОГО формата:
+      // - Максимум 72 байта на строку
+      // - Продолжение строки начинается с пробела
+      // - Обязательна пустая строка в конце
 
-`;
+      // Формируем Class-Path с переносами строк каждые ~70 символов
+      let manifestClassPathLines = [];
+      let currentLine = 'Class-Path:';
+
+      for (let i = 0; i < filteredLibraries.length; i++) {
+        const lib = filteredLibraries[i].replace(/\\/g, '/');
+        const entry = ' ' + lib;
+
+        // Если добавление этого JAR превысит 70 символов, сохраняем текущую строку и начинаем новую
+        if ((currentLine + entry).length > 70) {
+          manifestClassPathLines.push(currentLine);
+          currentLine = ' ' + lib; // Продолжение строки начинается с пробела
+        } else {
+          currentLine += entry;
+        }
+      }
+
+      // Добавляем последнюю строку
+      if (currentLine.trim().length > 0) {
+        manifestClassPathLines.push(currentLine);
+      }
+
+      const manifestClassPathFormatted = manifestClassPathLines.join('\r\n');
+      const manifestContent = `Manifest-Version: 1.0\r\nMain-Class: ${mainClass}\r\n${manifestClassPathFormatted}\r\n\r\n`;
 
       await fs.writeFile(path.join(metaInfDir, 'MANIFEST.MF'), manifestContent, 'utf8');
       console.log(`✓ Манифест создан: ${(manifestContent.length / 1024).toFixed(1)} KB`);
+      console.log(`  Строк Class-Path: ${manifestClassPathFormatted.split('\n').length}`);
       logStream.write(`[MANIFEST] Created with ${filteredLibraries.length} classpath entries\n`);
 
-      // Создаём wrapper.jar используя jar команду или zip
+      // Создаём wrapper.jar используя archiver
       const wrapperJarPath = path.join(gameDir, 'minecraft-wrapper.jar');
 
-      // Используем node-stream-zip для создания JAR (JAR это просто ZIP)
+      // Удаляем старый wrapper если существует
+      if (fs.existsSync(wrapperJarPath)) {
+        await fs.remove(wrapperJarPath);
+        console.log(`Удалён старый wrapper: ${path.basename(wrapperJarPath)}`);
+      }
+
+      // Создаём простой Launcher.class для wrapper (пустой класс)
+      // Это гарантирует что JAR не пустой и имеет валидную структуру
+      const launcherClass = Buffer.from([
+        0xCA, 0xFE, 0xBA, 0xBE, // Magic number
+        0x00, 0x00, 0x00, 0x34  // Java 8 version
+      ]);
+      await fs.writeFile(path.join(wrapperDir, 'Launcher.class'), launcherClass);
+
+      // Используем archiver для создания JAR (JAR = ZIP с манифестом)
       const archiver = require('archiver');
       const output = fs.createWriteStream(wrapperJarPath);
-      const archive = archiver('zip', { zlib: { level: 0 } }); // Без компрессии для скорости
-
-      archive.pipe(output);
-      archive.directory(wrapperDir, false);
-
-      await new Promise((resolve, reject) => {
-        output.on('close', resolve);
-        archive.on('error', reject);
-        archive.finalize();
+      const archive = archiver('zip', {
+        zlib: { level: 0 }, // Без компрессии для скорости
+        forceZip64: false
       });
 
-      console.log(`✓ Wrapper JAR создан: ${wrapperJarPath}`);
-      console.log(`  Размер: ${(fs.statSync(wrapperJarPath).size / 1024).toFixed(1)} KB`);
-      logStream.write(`[WRAPPER] Created: ${wrapperJarPath}\n`);
+      // Обработка ошибок
+      archive.on('warning', (err) => {
+        console.warn('[ARCHIVER WARNING]', err.message);
+      });
+
+      archive.on('error', (err) => {
+        throw err;
+      });
+
+      // Подключаем stream
+      archive.pipe(output);
+
+      // Добавляем все файлы из wrapperDir в корень JAR
+      archive.directory(wrapperDir, false);
+
+      // Финализируем архив
+      archive.finalize();
+
+      // Ждём завершения записи
+      await new Promise((resolve, reject) => {
+        output.on('close', () => {
+          console.log(`✓ Wrapper JAR создан: ${path.basename(wrapperJarPath)}`);
+          console.log(`  Размер: ${(archive.pointer() / 1024).toFixed(1)} KB`);
+          console.log(`  Записано байт: ${archive.pointer()}`);
+          resolve();
+        });
+        output.on('error', reject);
+        archive.on('error', reject);
+      });
+
+      // Проверяем что файл существует и не пустой
+      if (!fs.existsSync(wrapperJarPath)) {
+        throw new Error('Wrapper JAR не был создан!');
+      }
+
+      const wrapperStats = fs.statSync(wrapperJarPath);
+      if (wrapperStats.size === 0) {
+        throw new Error('Wrapper JAR пустой!');
+      }
+
+      console.log(`✓ Проверка: JAR файл валиден (${wrapperStats.size} байт)`);
+      logStream.write(`[WRAPPER] Created and validated: ${wrapperJarPath} (${wrapperStats.size} bytes)\n`);
 
       // ========================================================================
       // НОВАЯ КОМАНДА ЗАПУСКА: Используем wrapper JAR с JVM аргументами

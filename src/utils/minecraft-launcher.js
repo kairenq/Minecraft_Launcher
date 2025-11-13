@@ -327,11 +327,12 @@ class MinecraftLauncher {
       const mainClass = versionData.mainClass;
 
       // ========================================================================
-      // JAR WRAPPER С ПРАВИЛЬНЫМИ FILE:/// URLs (спецификация JAR)
-      // Это ЕДИНСТВЕННЫЙ способ обойти все проблемы Windows с путями!
+      // JAR WRAPPER С АБСОЛЮТНЫМИ ПУТЯМИ
+      // ВАЖНО: file:/// URLs НЕ ПОДДЕРЖИВАЮТСЯ в JAR Manifest Class-Path!
+      // Используем абсолютные пути с прямыми слешами
       // ========================================================================
 
-      console.log('\n=== СОЗДАНИЕ JAR WRAPPER (file:/// URLs) ===');
+      console.log('\n=== СОЗДАНИЕ JAR WRAPPER ===');
       logStream.write('\n=== СОЗДАНИЕ JAR WRAPPER ===\n');
 
       // Создаём временную директорию для wrapper JAR
@@ -340,15 +341,16 @@ class MinecraftLauncher {
       const metaInfDir = path.join(wrapperDir, 'META-INF');
       await fs.ensureDir(metaInfDir);
 
-      // Конвертируем пути в file:/// URLs (спецификация Java JAR)
-      const classPathUrls = filteredLibraries.map(lib => {
-        // Конвертируем Windows путь в file:/// URL
-        // C:\Users\... -> file:///C:/Users/...
-        const normalizedPath = lib.replace(/\\/g, '/');
-        return 'file:///' + normalizedPath;
+      // Конвертируем пути для манифеста
+      // ВАЖНО: JAR Manifest Class-Path НЕ поддерживает file:/// URLs!
+      // Используем абсолютные пути с прямыми слешами
+      const classPathForManifest = filteredLibraries.map(lib => {
+        // Просто конвертируем обратные слеши в прямые
+        // Java понимает пути с прямыми слешами даже на Windows
+        return lib.replace(/\\/g, '/');
       });
 
-      console.log(`Создание манифеста с ${filteredLibraries.length} JAR (file:/// URLs)...`);
+      console.log(`Создание манифеста с ${filteredLibraries.length} JAR файлами...`);
 
       // Создаём MANIFEST.MF с правильным форматом
       // Спецификация требует: строки не больше 72 байт, продолжение с пробела
@@ -359,8 +361,8 @@ class MinecraftLauncher {
       ];
 
       // Добавляем JAR файлы по одному на строку (избегаем проблем с длиной)
-      classPathUrls.forEach(url => {
-        manifestLines.push(' ' + url); // Пробел в начале = продолжение
+      classPathForManifest.forEach(jarPath => {
+        manifestLines.push(' ' + jarPath); // Пробел в начале = продолжение
       });
 
       // Добавляем пустую строку в конце (обязательно!)
@@ -370,7 +372,7 @@ class MinecraftLauncher {
 
       await fs.writeFile(path.join(metaInfDir, 'MANIFEST.MF'), manifestContent, 'utf8');
       console.log(`✓ Манифест создан: ${manifestLines.length} строк, ${(manifestContent.length / 1024).toFixed(1)} KB`);
-      logStream.write(`[MANIFEST] Created with ${filteredLibraries.length} file:/// URLs\n`);
+      logStream.write(`[MANIFEST] Created with ${filteredLibraries.length} absolute paths\n`);
 
       // Создаём wrapper.jar используя JAVA команду jar (гарантированно правильный JAR!)
       const wrapperJarPath = path.join(gameDir, 'minecraft-wrapper.jar');
@@ -432,7 +434,7 @@ class MinecraftLauncher {
       ];
 
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
-      console.log('Метод: JAR Wrapper с file:/// URLs');
+      console.log('Метод: JAR Wrapper с абсолютными путями');
       console.log('Wrapper: minecraft-wrapper.jar');
       console.log('JVM аргументов:', jvmArgsNoCp.length);
       console.log('Game аргументов:', gameArgs.length);
@@ -442,7 +444,7 @@ class MinecraftLauncher {
       console.log('\nЗапуск процесса Java...\n');
 
       // Записываем полную команду запуска в лог
-      logStream.write('\n=== ИСПОЛЬЗУЕТСЯ JAR WRAPPER (file:/// URLs) ===\n');
+      logStream.write('\n=== ИСПОЛЬЗУЕТСЯ JAR WRAPPER (absolute paths) ===\n');
       logStream.write(`Wrapper JAR: ${wrapperJarPath}\n`);
       logStream.write(`Main class: ${mainClass}\n`);
       logStream.write(`Classpath entries: ${filteredLibraries.length}\n\n`);
@@ -450,9 +452,9 @@ class MinecraftLauncher {
       jvmArgsNoCp.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('\nGAME ARGS:\n');
       gameArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
-      logStream.write('\n=== CLASSPATH в MANIFEST (file:/// URLs) ===\n');
-      classPathUrls.forEach((url, i) => {
-        logStream.write(`  [${i}] ${url}\n`);
+      logStream.write('\n=== CLASSPATH в MANIFEST (absolute paths) ===\n');
+      classPathForManifest.forEach((jarPath, i) => {
+        logStream.write(`  [${i}] ${jarPath}\n`);
       });
       logStream.write('='.repeat(80) + '\n\n');
 

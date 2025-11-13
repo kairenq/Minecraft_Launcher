@@ -57,7 +57,7 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "archiver": "^6.0.2",
+    "adm-zip": "^0.5.10",
     "axios": "^1.6.0",
     "extract-zip": "^2.0.1",
     "fs-extra": "^11.1.1",

@@ -372,7 +372,7 @@ class MinecraftLauncher {
       console.log(`✓ Манифест создан: ${manifestLines.length} строк, ${(manifestContent.length / 1024).toFixed(1)} KB`);
       logStream.write(`[MANIFEST] Created with ${filteredLibraries.length} file:/// URLs\n`);
 
-      // Создаём wrapper.jar
+      // Создаём wrapper.jar используя JAVA команду jar (гарантированно правильный JAR!)
       const wrapperJarPath = path.join(gameDir, 'minecraft-wrapper.jar');
 
       // Удаляем старый wrapper
@@ -380,26 +380,41 @@ class MinecraftLauncher {
         await fs.remove(wrapperJarPath);
       }
 
-      // Создаём JAR используя archiver
-      const archiver = require('archiver');
-      const output = fs.createWriteStream(wrapperJarPath);
-      const archive = archiver('zip', { zlib: { level: 0 } });
+      console.log('Создание JAR файла...');
 
-      archive.on('error', (err) => { throw err; });
-      archive.pipe(output);
-      archive.directory(wrapperDir, false);
-      archive.finalize();
+      // Используем Java jar команду для создания правильного JAR
+      const { execSync } = require('child_process');
 
-      // Ждём завершения
-      await new Promise((resolve, reject) => {
-        output.on('close', resolve);
-        output.on('error', reject);
-        archive.on('error', reject);
-      });
+      try {
+        // Переходим в wrapperDir и создаём JAR
+        // jar cfm wrapper.jar META-INF/MANIFEST.MF
+        execSync(`"${javaPath.replace('java.exe', 'jar.exe')}" cfm "${wrapperJarPath}" META-INF/MANIFEST.MF`, {
+          cwd: wrapperDir,
+          encoding: 'utf8',
+          timeout: 5000
+        });
 
-      const wrapperSize = fs.statSync(wrapperJarPath).size;
-      console.log(`✓ Wrapper JAR создан: ${path.basename(wrapperJarPath)} (${(wrapperSize / 1024).toFixed(1)} KB)`);
-      logStream.write(`[WRAPPER] Created: ${wrapperJarPath} (${wrapperSize} bytes)\n`);
+        const wrapperSize = fs.statSync(wrapperJarPath).size;
+        console.log(`✓ Wrapper JAR создан: ${path.basename(wrapperJarPath)} (${(wrapperSize / 1024).toFixed(1)} KB)`);
+        logStream.write(`[WRAPPER] Created using jar command: ${wrapperJarPath} (${wrapperSize} bytes)\n`);
+      } catch (error) {
+        console.error('Ошибка создания JAR через jar команду:', error.message);
+        console.log('Попытка создать JAR вручную...');
+
+        // Fallback: создаём JAR вручную как ZIP
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip();
+
+        // Добавляем MANIFEST.MF с правильной структурой
+        zip.addLocalFile(path.join(metaInfDir, 'MANIFEST.MF'), 'META-INF');
+
+        // Записываем JAR
+        zip.writeZip(wrapperJarPath);
+
+        const wrapperSize = fs.statSync(wrapperJarPath).size;
+        console.log(`✓ Wrapper JAR создан (fallback): ${path.basename(wrapperJarPath)} (${(wrapperSize / 1024).toFixed(1)} KB)`);
+        logStream.write(`[WRAPPER] Created using AdmZip fallback: ${wrapperJarPath} (${wrapperSize} bytes)\n`);
+      }
 
       // Собираем JVM аргументы (БЕЗ -cp, он уже в манифесте wrapper!)
       const jvmArgsNoCp = jvmArgs.filter((arg, i) => {

@@ -8,6 +8,7 @@
     "dev": "electron .",
     "test": "node test-launch.js",
     "debug": "node debug-launch.js",
+    "check-jar": "node check_jar.js",
     "build": "electron-builder",
     "build:win": "electron-builder --win --x64",
     "build:linux": "electron-builder --linux",

@@ -146,7 +146,8 @@ ipcMain.handle('download-minecraft', async (event, version) => {
         mainWindow.webContents.send('download-progress', {
           type: 'minecraft',
           version: version,
-          progress: progress
+          stage: progress.stage || 'Загрузка Minecraft',
+          percent: progress.percent || 0
         });
       },
       (error) => {
@@ -256,7 +257,8 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
             mainWindow.webContents.send('download-progress', {
               type: 'minecraft',
               version: modpack.minecraftVersion,
-              progress: progress
+              stage: progress.stage || 'Загрузка Minecraft',
+              percent: progress.percent || 0
             });
           },
           (error) => {

@@ -4,6 +4,7 @@ const path = require('path');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const streamPipeline = promisify(pipeline);
+const pLimit = require('p-limit');
 
 class MinecraftDownloader {
   constructor(launcherDir) {
@@ -232,18 +233,47 @@ class MinecraftDownloader {
 
       console.log(`Найдено библиотек для скачивания: ${librariesToDownload.length}`);
 
-      for (let i = 0; i < librariesToDownload.length; i++) {
-        const { artifact, name } = librariesToDownload[i];
+      // Фильтруем библиотеки, которые нужно скачать
+      const libsToDownload = librariesToDownload.filter(({ artifact }) => {
         const libPath = path.join(this.librariesDir, artifact.path);
+        return !fs.existsSync(libPath);
+      });
 
-        if (!fs.existsSync(libPath)) {
-          console.log(`Скачивание [${i + 1}/${librariesToDownload.length}]: ${name}`);
-          await this.downloadFile(artifact.url, libPath);
-        }
+      console.log(`Нужно скачать библиотек: ${libsToDownload.length} из ${librariesToDownload.length}`);
 
-        const progress = 40 + ((i / librariesToDownload.length) * 30);
-        onProgress({ stage: `Загрузка библиотек (${i + 1}/${librariesToDownload.length})`, percent: Math.floor(progress) });
+      if (libsToDownload.length > 0) {
+        // Параллельная загрузка библиотек (10 одновременно)
+        const limit = pLimit(10);
+        let downloadedLibs = 0;
+        const startTime = Date.now();
+
+        const downloadTasks = libsToDownload.map(({ artifact, name }) => {
+          return limit(async () => {
+            const libPath = path.join(this.librariesDir, artifact.path);
+            try {
+              await this.downloadFile(artifact.url, libPath);
+              downloadedLibs++;
+
+              const progress = 40 + ((downloadedLibs / libsToDownload.length) * 30);
+              onProgress({
+                stage: `Загрузка библиотек (${downloadedLibs}/${libsToDownload.length})`,
+                percent: Math.floor(progress)
+              });
+            } catch (error) {
+              console.error(`Ошибка скачивания библиотеки ${name}:`, error.message);
+              throw error;
+            }
+          });
+        });
+
+        await Promise.all(downloadTasks);
+
+        const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✓ Библиотеки скачаны за ${totalTime} секунд`);
       }
+
+      // Обновляем прогресс для всех библиотек (включая уже существующие)
+      onProgress({ stage: `Загрузка библиотек (${librariesToDownload.length}/${librariesToDownload.length})`, percent: 70 });
 
       // Загрузка ассетов
       onProgress({ stage: 'Загрузка ассетов', percent: 70 });
@@ -270,21 +300,54 @@ class MinecraftDownloader {
         assetIndex = await this.downloadJsonFile(assetIndexUrl, assetIndexPath);
       }
       const assets = Object.values(assetIndex.objects);
+      console.log(`Всего assets для проверки: ${assets.length}`);
 
-      let downloadedAssets = 0;
+      // Фильтруем только те assets, которые нужно скачать
+      const assetsToDownload = [];
       for (const asset of assets) {
         const hash = asset.hash;
         const assetPath = path.join(this.assetsDir, 'objects', hash.substring(0, 2), hash);
-
         if (!fs.existsSync(assetPath)) {
-          const assetUrl = `https://resources.download.minecraft.net/${hash.substring(0, 2)}/${hash}`;
-          await this.downloadFile(assetUrl, assetPath);
+          assetsToDownload.push({ hash, assetPath });
         }
-
-        downloadedAssets++;
-        const progress = 70 + ((downloadedAssets / assets.length) * 30);
-        onProgress({ stage: `Загрузка ассетов (${downloadedAssets}/${assets.length})`, percent: Math.floor(progress) });
       }
+
+      console.log(`Нужно скачать assets: ${assetsToDownload.length} из ${assets.length}`);
+
+      // Параллельная загрузка assets (20 одновременно)
+      const limit = pLimit(20);
+      let downloadedAssets = 0;
+      const startTime = Date.now();
+
+      const downloadTasks = assetsToDownload.map((asset) => {
+        return limit(async () => {
+          const assetUrl = `https://resources.download.minecraft.net/${asset.hash.substring(0, 2)}/${asset.hash}`;
+          try {
+            await this.downloadFile(assetUrl, asset.assetPath);
+            downloadedAssets++;
+
+            // Обновляем прогресс каждые 10 файлов или на последнем
+            if (downloadedAssets % 10 === 0 || downloadedAssets === assetsToDownload.length) {
+              const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+              const speed = (downloadedAssets / (Date.now() - startTime) * 1000).toFixed(1);
+              const progress = 70 + ((downloadedAssets / assetsToDownload.length) * 30);
+
+              onProgress({
+                stage: `Загрузка ассетов (${downloadedAssets}/${assetsToDownload.length}) [${speed} файлов/сек]`,
+                percent: Math.floor(progress)
+              });
+            }
+          } catch (error) {
+            console.error(`Ошибка скачивания asset ${asset.hash}:`, error.message);
+            throw error;
+          }
+        });
+      });
+
+      await Promise.all(downloadTasks);
+
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`✓ Assets скачаны за ${totalTime} секунд (${(downloadedAssets / totalTime).toFixed(1)} файлов/сек)`);
 
       onProgress({ stage: 'Завершено', percent: 100 });
       callback(null);

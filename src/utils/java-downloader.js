@@ -17,13 +17,50 @@ class JavaDownloader {
   async checkJava() {
     const javaPath = this.getJavaPath();
     if (!javaPath || !fs.existsSync(javaPath)) {
+      console.log('[JAVA] Java не найдена');
       return false;
     }
 
     try {
-      const { stdout } = await execPromise(`"${javaPath}" -version`);
+      // Проверяем версию Java
+      const { stderr } = await execPromise(`"${javaPath}" -version`);
+      const versionOutput = stderr || '';
+
+      console.log('[JAVA] Обнаружена Java:', versionOutput.split('\n')[0]);
+
+      // Извлекаем версию (например: "17.0.8", "1.8.0_362")
+      const versionMatch = versionOutput.match(/version "(.+?)"/);
+      if (!versionMatch) {
+        console.log('[JAVA] Не удалось определить версию Java - требуется переустановка');
+        return false;
+      }
+
+      const versionString = versionMatch[1];
+      console.log('[JAVA] Версия Java:', versionString);
+
+      // Проверяем версию: нужна Java 17+ для Minecraft 1.18+
+      // Формат версии: "17.0.8" или старый формат "1.8.0_362"
+      let majorVersion;
+      if (versionString.startsWith('1.')) {
+        // Старый формат: 1.8.0 -> 8
+        majorVersion = parseInt(versionString.split('.')[1]);
+      } else {
+        // Новый формат: 17.0.8 -> 17
+        majorVersion = parseInt(versionString.split('.')[0]);
+      }
+
+      console.log('[JAVA] Мажорная версия:', majorVersion);
+
+      if (majorVersion < 17) {
+        console.log(`[JAVA] ❌ Java ${majorVersion} слишком старая! Требуется Java 17+`);
+        console.log('[JAVA] Будет скачана правильная версия Java');
+        return false;
+      }
+
+      console.log(`[JAVA] ✓ Java ${majorVersion} подходит для Minecraft 1.18+`);
       return true;
     } catch (error) {
+      console.log('[JAVA] Ошибка проверки Java:', error.message);
       return false;
     }
   }

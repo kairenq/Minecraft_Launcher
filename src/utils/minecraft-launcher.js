@@ -334,6 +334,15 @@ class MinecraftLauncher {
       // Каждый аргумент на отдельной строке
       // Для аргументов с пробелами используем кавычки
       const argsFileContent = jvmArgs.map((arg, index) => {
+        // КРИТИЧНО: Classpath (строка с ; разделителями) НЕ оборачиваем в кавычки!
+        // В argfile Java сам правильно парсит пути, кавычки могут сломать парсинг
+        // Проверяем: если предыдущий аргумент был -cp, то текущий - это classpath
+        if (index > 0 && jvmArgs[index - 1] === '-cp') {
+          console.log(`[DEBUG] Classpath detected at index ${index}, NOT quoting`);
+          logStream.write(`[ARGFILE] Classpath (unquoted): ${arg.substring(0, 100)}...\n`);
+          return arg; // Возвращаем БЕЗ кавычек, даже если содержит пробелы!
+        }
+
         // Если аргумент содержит пробелы, оборачиваем в кавычки
         if (arg.includes(' ')) {
           // Для аргументов вида -Dkey=value где value содержит пробелы
@@ -347,9 +356,7 @@ class MinecraftLauncher {
           return `"${arg}"`;
         }
 
-        // ВАЖНО: Classpath (строка с ; разделителями) НЕ оборачиваем в кавычки!
-        // В argfile Java сам правильно парсит пути, кавычки могут сломать парсинг
-        // Просто возвращаем как есть
+        // Возвращаем как есть
         return arg;
       }).join('\n');
 

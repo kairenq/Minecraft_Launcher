@@ -47,16 +47,9 @@ class MinecraftLauncher {
         }
       }
 
-      // Нативные библиотеки
-      if (allowed && lib.downloads && lib.downloads.classifiers && lib.natives) {
-        const nativeKey = lib.natives[osName];
-        if (nativeKey && lib.downloads.classifiers[nativeKey]) {
-          const nativePath = path.join(this.librariesDir, lib.downloads.classifiers[nativeKey].path);
-          if (fs.existsSync(nativePath)) {
-            libraries.push(nativePath);
-          }
-        }
-      }
+      // Нативные библиотеки НЕ добавляем в classpath!
+      // Они распаковываются в natives директорию и загружаются через -Djava.library.path
+      // Добавление natives JAR файлов в classpath может вызвать ClassNotFoundException
     }
 
     return libraries;
@@ -298,7 +291,7 @@ class MinecraftLauncher {
       // Формируем содержимое файла аргументов
       // Каждый аргумент на отдельной строке
       // Для аргументов с пробелами используем кавычки
-      const argsFileContent = jvmArgs.map(arg => {
+      const argsFileContent = jvmArgs.map((arg, index) => {
         // Если аргумент содержит пробелы, оборачиваем в кавычки
         if (arg.includes(' ')) {
           // Для аргументов вида -Dkey=value где value содержит пробелы
@@ -311,6 +304,13 @@ class MinecraftLauncher {
           // Для остальных просто оборачиваем весь аргумент
           return `"${arg}"`;
         }
+
+        // ВАЖНО: Если это classpath (содержит ; разделители), оборачиваем в кавычки
+        // Это строка ПОСЛЕ -cp аргумента
+        if (arg.includes(';') && index > 0 && jvmArgs[index - 1] === '-cp') {
+          return `"${arg}"`;
+        }
+
         return arg;
       }).join('\n');
 

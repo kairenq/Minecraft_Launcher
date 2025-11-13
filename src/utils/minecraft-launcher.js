@@ -176,9 +176,20 @@ class MinecraftLauncher {
       logStream.write('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===\n');
 
       let missingFiles = [];
+      let nativesInClasspath = [];
+
       for (let i = 0; i < libraries.length; i++) {
         const lib = libraries[i];
         const exists = fs.existsSync(lib);
+        const libName = path.basename(lib);
+
+        // Проверяем не попали ли natives в classpath (это ошибка!)
+        if (libName.includes('-natives-')) {
+          nativesInClasspath.push(libName);
+          console.error(`⚠️  ОШИБКА: Natives JAR в classpath [${i}]: ${libName}`);
+          logStream.write(`[WARNING] Natives in classpath: ${libName}\n`);
+        }
+
         if (!exists) {
           missingFiles.push(lib);
           console.error(`❌ ОТСУТСТВУЕТ [${i}]: ${lib}`);
@@ -186,9 +197,17 @@ class MinecraftLauncher {
         } else {
           const stats = fs.statSync(lib);
           if (i < 5 || i === libraries.length - 1) { // Показываем первые 5 и последний (client.jar)
-            console.log(`✓ [${i}] ${path.basename(lib)} (${(stats.size / 1024).toFixed(1)} KB)`);
+            console.log(`✓ [${i}] ${libName} (${(stats.size / 1024).toFixed(1)} KB)`);
           }
         }
+      }
+
+      if (nativesInClasspath.length > 0) {
+        console.error(`\n⚠️  КРИТИЧЕСКАЯ ОШИБКА: ${nativesInClasspath.length} natives JAR файлов в classpath!`);
+        console.error('Natives НЕ должны быть в classpath - это вызывает ClassNotFoundException');
+        console.error('Первые natives:', nativesInClasspath.slice(0, 5));
+        logStream.write(`\n[CRITICAL ERROR] ${nativesInClasspath.length} natives in classpath!\n`);
+        logStream.write(`Natives list: ${nativesInClasspath.join(', ')}\n`);
       }
 
       if (missingFiles.length > 0) {
@@ -199,10 +218,33 @@ class MinecraftLauncher {
       }
 
       console.log(`Всего библиотек: ${libraries.length}, все файлы найдены ✓`);
+      if (nativesInClasspath.length === 0) {
+        console.log('✓ Natives НЕ обнаружены в classpath (правильно!)');
+      }
       logStream.write(`Всего библиотек: ${libraries.length}\n`);
 
+      // КРИТИЧЕСКИ ВАЖНО: Убираем natives из classpath если они случайно попали туда
+      // Natives JAR файлы НЕ должны быть в classpath!
+      const filteredLibraries = libraries.filter(lib => {
+        const libName = path.basename(lib);
+        const isNative = libName.includes('-natives-');
+        if (isNative) {
+          console.warn(`Фильтрация natives из classpath: ${libName}`);
+          logStream.write(`[FILTER] Removed natives from classpath: ${libName}\n`);
+        }
+        return !isNative;
+      });
+
+      if (filteredLibraries.length < libraries.length) {
+        const removed = libraries.length - filteredLibraries.length;
+        console.log(`✓ Отфильтровано ${removed} natives JAR файлов из classpath`);
+        logStream.write(`[INFO] Filtered out ${removed} natives JARs\n`);
+      }
+
       const separator = process.platform === 'win32' ? ';' : ':';
-      const classpath = libraries.join(separator);
+      const classpath = filteredLibraries.join(separator);
+
+      console.log(`✓ Финальный classpath: ${filteredLibraries.length} JAR файлов (без natives)`);
 
       // Логируем финальную команду
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
@@ -317,6 +359,29 @@ class MinecraftLauncher {
       await fs.writeFile(argsFilePath, argsFileContent, 'utf8');
       console.log(`✓ Аргументы JVM записаны в файл: ${argsFilePath}`);
       console.log(`  Размер файла: ${argsFileContent.length} байт`);
+
+      // Проверяем client.jar и главный класс
+      console.log('\n=== ПРОВЕРКА CLIENT.JAR ===');
+      const clientJar = libraries[libraries.length - 1]; // Последний элемент - client.jar
+      const clientJarName = path.basename(clientJar);
+      console.log(`Client JAR: ${clientJarName}`);
+
+      if (fs.existsSync(clientJar)) {
+        const stats = fs.statSync(clientJar);
+        console.log(`✓ Размер: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+
+        // Попробуем проверить содержимое JAR
+        try {
+          const { execSync } = require('child_process');
+          const jarList = execSync(`"${javaPath}" -jar "${clientJar}" --help 2>&1 || echo "Cannot run as jar"`, { encoding: 'utf8', timeout: 2000 }).substring(0, 200);
+          console.log(`JAR info: ${jarList.split('\n')[0]}`);
+        } catch (e) {
+          console.log('(не удалось проверить JAR напрямую)');
+        }
+      } else {
+        console.error(`❌ Client JAR не найден: ${clientJar}`);
+        throw new Error(`Client JAR не найден: ${clientJar}`);
+      }
 
       // Используем @argfile для передачи JVM аргументов
       const allArgs = [`@${argsFilePath}`, mainClass, ...gameArgs];

@@ -291,19 +291,50 @@ class MinecraftLauncher {
       // Главный класс
       const mainClass = versionData.mainClass;
 
-      // Полная команда
-      const allArgs = [...jvmArgs, mainClass, ...gameArgs];
+      // ВАЖНО: На Windows с длинным classpath используем @argfile для передачи аргументов
+      // Это решает проблему с путями содержащими пробелы и длинной командной строкой
+      const argsFilePath = path.join(gameDir, 'jvm_args.txt');
+
+      // Формируем содержимое файла аргументов
+      // Каждый аргумент на отдельной строке
+      // Для аргументов с пробелами используем кавычки
+      const argsFileContent = jvmArgs.map(arg => {
+        // Если аргумент содержит пробелы, оборачиваем в кавычки
+        if (arg.includes(' ')) {
+          // Для аргументов вида -Dkey=value где value содержит пробелы
+          if (arg.startsWith('-D') && arg.includes('=')) {
+            const eqIndex = arg.indexOf('=');
+            const key = arg.substring(0, eqIndex + 1);
+            const value = arg.substring(eqIndex + 1);
+            return `${key}"${value}"`;
+          }
+          // Для остальных просто оборачиваем весь аргумент
+          return `"${arg}"`;
+        }
+        return arg;
+      }).join('\n');
+
+      await fs.writeFile(argsFilePath, argsFileContent, 'utf8');
+      console.log(`✓ Аргументы JVM записаны в файл: ${argsFilePath}`);
+      console.log(`  Размер файла: ${argsFileContent.length} байт`);
+
+      // Используем @argfile для передачи JVM аргументов
+      const allArgs = [`@${argsFilePath}`, mainClass, ...gameArgs];
 
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
-      console.log('Аргументов JVM:', jvmArgs.length);
+      console.log('Аргументов JVM:', jvmArgs.length, '(в файле)');
       console.log('Аргументов игры:', gameArgs.length);
       console.log('RAM выделено:', memory, 'MB');
-      console.log('Первые JVM аргументы:', jvmArgs.slice(0, 3).join(' '));
+      console.log('Используется @argfile:', argsFilePath);
       console.log('\nЗапуск процесса Java...\n');
 
       // Записываем полную команду запуска в лог
-      logStream.write('\nПОЛНАЯ КОМАНДА:\n');
-      logStream.write(`"${javaPath}" ${allArgs.join(' ')}\n`);
+      logStream.write('\nИСПОЛЬЗУЕТСЯ @ARGFILE:\n');
+      logStream.write(`Файл аргументов: ${argsFilePath}\n\n`);
+      logStream.write('СОДЕРЖИМОЕ ARGFILE:\n');
+      logStream.write(argsFileContent + '\n\n');
+      logStream.write('ПОЛНАЯ КОМАНДА:\n');
+      logStream.write(`"${javaPath}" @${argsFilePath} ${mainClass} ${gameArgs.join(' ')}\n`);
       logStream.write('='.repeat(80) + '\n\n');
 
       console.log('\n💾 Логи записываются в:', logFile);

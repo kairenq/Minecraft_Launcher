@@ -404,6 +404,41 @@ class MinecraftLauncher {
       console.log(`"${javaPath}" ${allArgs.slice(0, 10).join(' ')} ...`);
       console.log('(полная команда записана в лог-файл)\n');
 
+      // ========== СОЗДАЁМ .BAT ФАЙЛ ДЛЯ РУЧНОЙ ОТЛАДКИ ==========
+      const batFilePath = path.join(gameDir, 'run_minecraft.bat');
+      const batContent = `@echo off
+chcp 65001 >nul
+echo ========================================
+echo MINECRAFT LAUNCHER - MANUAL DEBUG
+echo ========================================
+echo.
+echo Working directory: ${gameDir}
+echo Java: ${javaPath}
+echo Argfile: ${argsFilePath}
+echo.
+echo Press ENTER to start Minecraft...
+pause >nul
+echo.
+echo Starting Minecraft with @argfile...
+echo.
+
+cd /d "${gameDir}"
+"${javaPath}" @"${argsFilePath}" ${mainClass} ${gameArgs.join(' ')}
+
+echo.
+echo ========================================
+echo Exit code: %ERRORLEVEL%
+echo ========================================
+echo.
+echo Press any key to close...
+pause >nul
+`;
+
+      await fs.writeFile(batFilePath, batContent, 'utf8');
+      console.log(`\n✓ Создан BAT файл: ${batFilePath}`);
+      console.log(`  Запустите его вручную для детальной отладки!`);
+      logStream.write(`\n[INFO] Created BAT file: ${batFilePath}\n`);
+
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {
         cwd: gameDir,

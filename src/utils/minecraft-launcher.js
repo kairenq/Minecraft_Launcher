@@ -336,7 +336,7 @@ class MinecraftLauncher {
       console.log('\n=== ПОДГОТОВКА ЗАПУСКА ===');
       logStream.write('\n=== ПОДГОТОВКА ЗАПУСКА ===\n');
 
-      const separator = process.platform === 'win32' ? ';' : ':';
+      // separator уже определён выше на строке 244!
       const classpathFinal = filteredLibraries.join(separator);
 
       console.log(`Classpath: ${filteredLibraries.length} JAR файлов`);

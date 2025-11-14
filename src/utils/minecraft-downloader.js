@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
+const crypto = require('crypto');
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const streamPipeline = promisify(pipeline);
@@ -25,7 +26,25 @@ class MinecraftDownloader {
     const versionJson = path.join(versionDir, `${version}.json`);
     const versionJar = path.join(versionDir, `${version}.jar`);
 
-    return fs.existsSync(versionJson) && fs.existsSync(versionJar);
+    if (!fs.existsSync(versionJson) || !fs.existsSync(versionJar)) {
+      return false;
+    }
+
+    // Проверяем целостность JAR файла
+    try {
+      const versionData = await fs.readJson(versionJson);
+      if (versionData.downloads && versionData.downloads.client && versionData.downloads.client.sha1) {
+        const isValid = await this.verifySha1(versionJar, versionData.downloads.client.sha1);
+        if (!isValid) {
+          console.log(`⚠️  ${version}.jar поврежден, требуется переустановка`);
+          return false;
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error(`Ошибка проверки ${version}:`, error.message);
+      return false;
+    }
   }
 
   async getVersionManifest() {
@@ -164,6 +183,32 @@ class MinecraftDownloader {
     }
   }
 
+  async verifySha1(filePath, expectedSha1) {
+    if (!expectedSha1) {
+      return true; // Если SHA1 не предоставлен, пропускаем проверку
+    }
+
+    try {
+      const fileBuffer = await fs.readFile(filePath);
+      const hash = crypto.createHash('sha1');
+      hash.update(fileBuffer);
+      const actualSha1 = hash.digest('hex');
+
+      const isValid = actualSha1.toLowerCase() === expectedSha1.toLowerCase();
+
+      if (!isValid) {
+        console.log(`❌ SHA1 несовпадение для ${path.basename(filePath)}`);
+        console.log(`   Ожидалось: ${expectedSha1}`);
+        console.log(`   Получено:  ${actualSha1}`);
+      }
+
+      return isValid;
+    } catch (error) {
+      console.error(`Ошибка проверки SHA1 для ${filePath}:`, error.message);
+      return false;
+    }
+  }
+
   async download(version, onProgress, callback) {
     try {
       onProgress({ stage: 'Получение информации о версии', percent: 0 });
@@ -179,11 +224,37 @@ class MinecraftDownloader {
       // Загрузка JAR клиента
       onProgress({ stage: 'Загрузка клиента', percent: 10 });
       const clientJarPath = path.join(versionDir, `${version}.jar`);
-      await this.downloadFile(
-        versionData.downloads.client.url,
-        clientJarPath,
-        (p) => onProgress({ stage: 'Загрузка клиента', percent: 10 + (p * 0.3) })
-      );
+      const clientSha1 = versionData.downloads.client.sha1;
+
+      // Проверяем существующий файл
+      let needDownload = true;
+      if (fs.existsSync(clientJarPath)) {
+        console.log('Проверка целостности client.jar...');
+        const isValid = await this.verifySha1(clientJarPath, clientSha1);
+        if (isValid) {
+          console.log('✓ Client.jar уже существует и валиден');
+          needDownload = false;
+        } else {
+          console.log('⚠️  Client.jar поврежден, требуется перезагрузка');
+          await fs.remove(clientJarPath);
+        }
+      }
+
+      if (needDownload) {
+        await this.downloadFile(
+          versionData.downloads.client.url,
+          clientJarPath,
+          (p) => onProgress({ stage: 'Загрузка клиента', percent: 10 + (p * 0.3) })
+        );
+
+        // Проверяем SHA1 после загрузки
+        console.log('Проверка целостности загруженного client.jar...');
+        const isValid = await this.verifySha1(clientJarPath, clientSha1);
+        if (!isValid) {
+          throw new Error(`Client.jar поврежден после загрузки! SHA1 не совпадает.`);
+        }
+        console.log('✓ Client.jar загружен и проверен');
+      }
 
       // Загрузка библиотек
       onProgress({ stage: 'Загрузка библиотек', percent: 40 });
@@ -233,11 +304,23 @@ class MinecraftDownloader {
 
       console.log(`Найдено библиотек для скачивания: ${librariesToDownload.length}`);
 
-      // Фильтруем библиотеки, которые нужно скачать
-      const libsToDownload = librariesToDownload.filter(({ artifact }) => {
+      // Фильтруем библиотеки, которые нужно скачать или перезагрузить
+      const libsToDownload = [];
+      for (const { artifact, name } of librariesToDownload) {
         const libPath = path.join(this.librariesDir, artifact.path);
-        return !fs.existsSync(libPath);
-      });
+
+        if (!fs.existsSync(libPath)) {
+          libsToDownload.push({ artifact, name, reason: 'missing' });
+        } else if (artifact.sha1) {
+          // Проверяем SHA1 если файл существует
+          const isValid = await this.verifySha1(libPath, artifact.sha1);
+          if (!isValid) {
+            console.log(`⚠️  ${name}: SHA1 не совпадает, требуется перезагрузка`);
+            libsToDownload.push({ artifact, name, reason: 'corrupted' });
+            await fs.remove(libPath);
+          }
+        }
+      }
 
       console.log(`Нужно скачать библиотек: ${libsToDownload.length} из ${librariesToDownload.length}`);
 
@@ -247,11 +330,20 @@ class MinecraftDownloader {
         let downloadedLibs = 0;
         const startTime = Date.now();
 
-        const downloadTasks = libsToDownload.map(({ artifact, name }) => {
+        const downloadTasks = libsToDownload.map(({ artifact, name, reason }) => {
           return limit(async () => {
             const libPath = path.join(this.librariesDir, artifact.path);
             try {
               await this.downloadFile(artifact.url, libPath);
+
+              // Проверяем SHA1 после загрузки
+              if (artifact.sha1) {
+                const isValid = await this.verifySha1(libPath, artifact.sha1);
+                if (!isValid) {
+                  throw new Error(`SHA1 несовпадение для ${name} после загрузки`);
+                }
+              }
+
               downloadedLibs++;
 
               const progress = 40 + ((downloadedLibs / libsToDownload.length) * 30);

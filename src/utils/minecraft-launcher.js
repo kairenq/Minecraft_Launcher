@@ -142,29 +142,91 @@ class MinecraftLauncher {
       logStream.write('='.repeat(80) + '\n\n');
 
       // Извлечение нативных библиотек
+      console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
+      logStream.write('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===\n');
+
+      let nativesExtracted = 0;
       for (const lib of versionData.libraries) {
         if (lib.downloads && lib.downloads.classifiers && lib.natives) {
           const nativeKey = lib.natives[osName];
           if (nativeKey && lib.downloads.classifiers[nativeKey]) {
             const nativePath = path.join(this.librariesDir, lib.downloads.classifiers[nativeKey].path);
             if (fs.existsSync(nativePath)) {
+              console.log(`Распаковка natives: ${path.basename(nativePath)}`);
+              logStream.write(`[NATIVES] Extracting: ${path.basename(nativePath)}\n`);
+
               const StreamZip = require('node-stream-zip');
               const zip = new StreamZip({ file: nativePath, storeEntries: true });
 
               await new Promise((resolve, reject) => {
                 zip.on('ready', () => {
-                  zip.extract(null, nativesDir, (err) => {
-                    zip.close();
-                    if (err) reject(err);
-                    else resolve();
-                  });
+                  const entries = zip.entries();
+                  let extractedFiles = 0;
+
+                  // Извлекаем только нативные библиотеки (.dll на Windows, .so на Linux, .dylib на macOS)
+                  const nativeExtensions = process.platform === 'win32' ? ['.dll'] :
+                                          process.platform === 'darwin' ? ['.dylib', '.jnilib'] :
+                                          ['.so'];
+
+                  for (const entryName in entries) {
+                    const entry = entries[entryName];
+                    // Пропускаем директории и META-INF
+                    if (entry.isDirectory || entryName.startsWith('META-INF/')) {
+                      continue;
+                    }
+
+                    // Извлекаем только файлы с нужными расширениями
+                    const hasValidExtension = nativeExtensions.some(ext => entryName.toLowerCase().endsWith(ext));
+                    if (hasValidExtension) {
+                      const destPath = path.join(nativesDir, path.basename(entryName));
+                      try {
+                        const data = zip.entryDataSync(entryName);
+                        fs.writeFileSync(destPath, data);
+                        extractedFiles++;
+                        logStream.write(`[NATIVES]   -> ${path.basename(entryName)} (${data.length} bytes)\n`);
+                      } catch (err) {
+                        console.error(`Ошибка извлечения ${entryName}:`, err.message);
+                        logStream.write(`[NATIVES ERROR] Failed to extract ${entryName}: ${err.message}\n`);
+                      }
+                    }
+                  }
+
+                  console.log(`  Извлечено файлов: ${extractedFiles}`);
+                  nativesExtracted += extractedFiles;
+                  zip.close();
+                  resolve();
                 });
                 zip.on('error', reject);
               });
+            } else {
+              console.warn(`⚠️  Native JAR не найден: ${nativePath}`);
+              logStream.write(`[NATIVES WARNING] Missing: ${nativePath}\n`);
             }
           }
         }
       }
+
+      console.log(`\n✓ Всего извлечено нативных файлов: ${nativesExtracted}`);
+      logStream.write(`[NATIVES] Total extracted: ${nativesExtracted} files\n`);
+
+      // Проверяем что нативы реально распакованы
+      const nativeFiles = fs.readdirSync(nativesDir);
+      console.log(`✓ Файлов в директории natives: ${nativeFiles.length}`);
+      console.log('Список нативных файлов:');
+      nativeFiles.forEach(file => {
+        const fullPath = path.join(nativesDir, file);
+        const stats = fs.statSync(fullPath);
+        console.log(`  - ${file} (${(stats.size / 1024).toFixed(1)} KB)`);
+        logStream.write(`[NATIVES FILE] ${file} (${stats.size} bytes)\n`);
+      });
+
+      if (nativeFiles.length === 0) {
+        const errorMsg = 'КРИТИЧЕСКАЯ ОШИБКА: Ни один нативный файл не был извлечен!';
+        console.error('\n' + errorMsg);
+        logStream.write('\n[CRITICAL ERROR] ' + errorMsg + '\n');
+        throw new Error(errorMsg);
+      }
+
 
       // Построение classpath
       const libraries = await this.buildClasspath(versionData, osName);

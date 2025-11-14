@@ -393,19 +393,29 @@ class MinecraftLauncher {
       // Генерация UUID для offline режима
       const uuid = this.generateUUID(username);
 
+      // Определяем assetIndex (для Forge может быть не определен напрямую)
+      let assetIndexName = version;
+      if (versionData.assetIndex && versionData.assetIndex.id) {
+        assetIndexName = versionData.assetIndex.id;
+      } else if (versionData.inheritsFrom) {
+        // Для Forge/Fabric - используем базовую версию как fallback
+        assetIndexName = versionData.inheritsFrom;
+        console.log(`⚠️  assetIndex не найден, используем inheritsFrom: ${assetIndexName}`);
+      }
+
       // Переменные для замены
       const variables = {
         auth_player_name: username,
         version_name: version,
         game_directory: gameDir,
         assets_root: this.assetsDir,
-        assets_index_name: versionData.assetIndex.id,
+        assets_index_name: assetIndexName,
         auth_uuid: uuid,
         auth_access_token: uuid, // В offline режиме используем UUID как токен
         clientid: '0', // Offline режим - нет OAuth client ID
         auth_xuid: '0', // Offline режим - нет Xbox User ID
         user_type: 'legacy',
-        version_type: versionData.type,
+        version_type: versionData.type || 'release',
         natives_directory: nativesDir,
         launcher_name: 'minecraft-custom-launcher',
         launcher_version: '1.0.0',

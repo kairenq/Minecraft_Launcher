@@ -154,8 +154,44 @@ class MinecraftLauncher {
       // Для Forge/Fabric проверка JAR не требуется - они используют свои профили
 
       console.log('Загрузка конфигурации версии...');
-      const versionData = await fs.readJson(versionJsonPath);
+      let versionData = await fs.readJson(versionJsonPath);
       console.log('Главный класс:', versionData.mainClass);
+
+      // Для Forge/Fabric: объединяем библиотеки с базовой версией
+      if (versionData.inheritsFrom) {
+        console.log(`\n=== НАСЛЕДОВАНИЕ ОТ БАЗОВОЙ ВЕРСИИ ===`);
+        console.log('Базовая версия:', versionData.inheritsFrom);
+
+        const baseVersionPath = path.join(this.versionsDir, versionData.inheritsFrom, `${versionData.inheritsFrom}.json`);
+
+        if (fs.existsSync(baseVersionPath)) {
+          const baseVersionData = await fs.readJson(baseVersionPath);
+          console.log('✓ Загружен базовый профиль:', versionData.inheritsFrom);
+
+          // Объединяем библиотеки: сначала базовые, потом Forge/Fabric
+          const baseLibraries = baseVersionData.libraries || [];
+          const modLoaderLibraries = versionData.libraries || [];
+
+          versionData.libraries = [...baseLibraries, ...modLoaderLibraries];
+
+          console.log(`Библиотек из базы: ${baseLibraries.length}`);
+          console.log(`Библиотек ${modLoader}: ${modLoaderLibraries.length}`);
+          console.log(`Всего библиотек: ${versionData.libraries.length}`);
+
+          // Наследуем assetIndex если его нет
+          if (!versionData.assetIndex && baseVersionData.assetIndex) {
+            versionData.assetIndex = baseVersionData.assetIndex;
+            console.log('✓ Унаследован assetIndex:', versionData.assetIndex.id);
+          }
+
+          // Наследуем другие поля если нужно
+          if (!versionData.assets && baseVersionData.assets) {
+            versionData.assets = baseVersionData.assets;
+          }
+        } else {
+          console.warn(`⚠️  Базовый профиль не найден: ${baseVersionPath}`);
+        }
+      }
 
       // Создание директорий
       await fs.ensureDir(gameDir);
@@ -302,11 +338,20 @@ class MinecraftLauncher {
       // Построение classpath
       const libraries = await this.buildClasspath(versionData, osName);
 
-      // Добавляем JAR клиента если это ванильный Minecraft
-      // Для Forge/Fabric classpath уже включён в профиль
+      // Добавляем JAR клиента
       if (modLoader === 'vanilla' || !modLoader) {
+        // Для ванильного - используем версию напрямую
         const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
         libraries.push(versionJar);
+      } else if (versionData.inheritsFrom) {
+        // Для Forge/Fabric - используем JAR базовой версии
+        const baseVersionJar = path.join(this.versionsDir, versionData.inheritsFrom, `${versionData.inheritsFrom}.jar`);
+        if (fs.existsSync(baseVersionJar)) {
+          libraries.push(baseVersionJar);
+          console.log(`✓ Добавлен client JAR: ${versionData.inheritsFrom}.jar`);
+        } else {
+          console.warn(`⚠️  Client JAR не найден: ${baseVersionJar}`);
+        }
       }
 
       // КРИТИЧНО: Проверяем существование всех файлов в classpath

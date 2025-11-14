@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
+const pLimit = require('p-limit');
 
 class ModsDownloader {
   constructor(launcherDir) {
@@ -29,59 +30,65 @@ class ModsDownloader {
     let skipped = 0;
     const errors = [];
 
-    for (let i = 0; i < mods.length; i++) {
-      const mod = mods[i];
-      const progress = Math.floor(((i + 1) / mods.length) * 100);
+    // МАКСИМАЛЬНАЯ СКОРОСТЬ - Параллельная загрузка модов (20 одновременно)
+    const limit = pLimit(20);
+    let processed = 0;
 
-      try {
-        onProgress({
-          stage: `Загрузка модов (${i + 1}/${mods.length})`,
-          percent: progress
-        });
+    const downloadTasks = mods.map((mod, i) => {
+      return limit(async () => {
+        try {
+          console.log(`\n[MOD ${i + 1}/${mods.length}] ${mod.name}`);
 
-        console.log(`\n[MOD ${i + 1}/${mods.length}] ${mod.name}`);
+          if (mod.url) {
+            // Скачивание по URL
+            const fileName = mod.fileName || this.getFileNameFromUrl(mod.url);
+            const filePath = path.join(modsDir, fileName);
 
-        if (mod.url) {
-          // Скачивание по URL
-          const fileName = mod.fileName || this.getFileNameFromUrl(mod.url);
-          const filePath = path.join(modsDir, fileName);
+            if (fs.existsSync(filePath)) {
+              console.log(`  Уже существует: ${fileName}`);
+              skipped++;
+            } else {
+              console.log(`  URL: ${mod.url}`);
+              console.log(`  Сохранение: ${fileName}`);
 
-          if (fs.existsSync(filePath)) {
-            console.log(`  Уже существует: ${fileName}`);
-            skipped++;
-            continue;
-          }
+              await this.downloadFile(mod.url, filePath);
+              downloaded++;
+              console.log(`  ✓ Загружен`);
+            }
 
-          console.log(`  URL: ${mod.url}`);
-          console.log(`  Сохранение: ${fileName}`);
+          } else if (mod.fileName) {
+            // Мод должен быть скопирован вручную
+            const filePath = path.join(modsDir, mod.fileName);
 
-          await this.downloadFile(mod.url, filePath);
-          downloaded++;
-          console.log(`  ✓ Загружен`);
+            if (fs.existsSync(filePath)) {
+              console.log(`  Уже существует: ${mod.fileName}`);
+              skipped++;
+            } else {
+              console.warn(`  ⚠️  Файл не найден: ${mod.fileName}`);
+              console.warn(`  Пожалуйста, скопируйте мод вручную в: ${modsDir}`);
+              errors.push(`${mod.name}: файл не найден`);
+            }
 
-        } else if (mod.fileName) {
-          // Мод должен быть скопирован вручную
-          const filePath = path.join(modsDir, mod.fileName);
-
-          if (fs.existsSync(filePath)) {
-            console.log(`  Уже существует: ${mod.fileName}`);
-            skipped++;
           } else {
-            console.warn(`  ⚠️  Файл не найден: ${mod.fileName}`);
-            console.warn(`  Пожалуйста, скопируйте мод вручную в: ${modsDir}`);
-            errors.push(`${mod.name}: файл не найден`);
+            console.warn(`  ⚠️  Нет URL и fileName для мода`);
+            errors.push(`${mod.name}: нет источника загрузки`);
           }
 
-        } else {
-          console.warn(`  ⚠️  Нет URL и fileName для мода`);
-          errors.push(`${mod.name}: нет источника загрузки`);
-        }
+          processed++;
+          const progress = Math.floor((processed / mods.length) * 100);
+          onProgress({
+            stage: `Загрузка модов (${processed}/${mods.length})`,
+            percent: progress
+          });
 
-      } catch (error) {
-        console.error(`  ❌ Ошибка: ${error.message}`);
-        errors.push(`${mod.name}: ${error.message}`);
-      }
-    }
+        } catch (error) {
+          console.error(`  ❌ Ошибка: ${error.message}`);
+          errors.push(`${mod.name}: ${error.message}`);
+        }
+      });
+    });
+
+    await Promise.all(downloadTasks);
 
     console.log(`\n=== ИТОГИ ЗАГРУЗКИ МОДОВ ===`);
     console.log(`Загружено: ${downloaded}`);

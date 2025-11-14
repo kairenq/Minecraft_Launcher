@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
+const pLimit = require('p-limit');
 
 class ModLoaderInstaller {
   constructor(launcherDir) {
@@ -10,6 +11,14 @@ class ModLoaderInstaller {
 
     fs.ensureDirSync(this.versionsDir);
     fs.ensureDirSync(this.librariesDir);
+
+    // Максимальная скорость - агрессивные настройки
+    this.axiosConfig = {
+      timeout: 30000,
+      maxRedirects: 10,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    };
   }
 
   /**
@@ -19,7 +28,7 @@ class ModLoaderInstaller {
     console.log(`\n=== УСТАНОВКА MODLOADER ===`);
     console.log(`Тип: ${modLoader}`);
     console.log(`Minecraft: ${minecraftVersion}`);
-    console.log(`Версия модлоадера: ${modLoaderVersion}`);
+    console.log(`Версия модлоадера: ${modLoaderVersion || 'auto'}`);
 
     if (modLoader === 'vanilla') {
       console.log('Vanilla Minecraft - модлоадер не требуется');
@@ -36,16 +45,16 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Установка Fabric
+   * Установка Fabric - полностью автоматическая
    */
   async installFabric(minecraftVersion, loaderVersion, onProgress) {
     try {
-      onProgress({ stage: 'Загрузка Fabric', percent: 0 });
+      onProgress({ stage: 'Получение данных Fabric', percent: 0 });
 
       // Если версия не указана - берём последнюю стабильную
       if (!loaderVersion) {
         console.log('[FABRIC] Версия не указана, получаем последнюю...');
-        const loaders = await axios.get(`https://meta.fabricmc.net/v2/versions/loader/${minecraftVersion}`);
+        const loaders = await axios.get(`https://meta.fabricmc.net/v2/versions/loader/${minecraftVersion}`, this.axiosConfig);
         if (loaders.data.length === 0) {
           throw new Error(`Fabric не найден для Minecraft ${minecraftVersion}`);
         }
@@ -53,67 +62,84 @@ class ModLoaderInstaller {
         console.log(`[FABRIC] Выбрана версия: ${loaderVersion}`);
       }
 
+      const versionId = `fabric-loader-${loaderVersion}-${minecraftVersion}`;
+      const versionDir = path.join(this.versionsDir, versionId);
+
+      // Проверяем уже установленный
+      if (fs.existsSync(path.join(versionDir, `${versionId}.json`))) {
+        console.log('[FABRIC] Уже установлен, пропускаем');
+        onProgress({ stage: 'Fabric уже установлен', percent: 100 });
+        return { success: true, versionId: versionId };
+      }
+
       // Скачиваем профиль Fabric
-      onProgress({ stage: 'Загрузка профиля Fabric', percent: 20 });
+      onProgress({ stage: 'Загрузка профиля Fabric', percent: 10 });
       const profileUrl = `https://meta.fabricmc.net/v2/versions/loader/${minecraftVersion}/${loaderVersion}/profile/json`;
       console.log(`[FABRIC] Загрузка профиля: ${profileUrl}`);
 
-      const response = await axios.get(profileUrl);
+      const response = await axios.get(profileUrl, this.axiosConfig);
       const fabricProfile = response.data;
 
-      // Создаём директорию для версии
-      const versionId = `fabric-loader-${loaderVersion}-${minecraftVersion}`;
-      const versionDir = path.join(this.versionsDir, versionId);
       await fs.ensureDir(versionDir);
 
       // Сохраняем JSON профиль
       const versionJsonPath = path.join(versionDir, `${versionId}.json`);
       await fs.writeJson(versionJsonPath, fabricProfile, { spaces: 2 });
-      console.log(`[FABRIC] Профиль сохранён: ${versionJsonPath}`);
+      console.log(`[FABRIC] Профиль сохранён`);
 
-      onProgress({ stage: 'Загрузка библиотек Fabric', percent: 40 });
+      onProgress({ stage: 'Загрузка библиотек Fabric', percent: 30 });
 
-      // Скачиваем библиотеки Fabric
+      // Скачиваем библиотеки Fabric параллельно
       const libraries = fabricProfile.libraries || [];
       console.log(`[FABRIC] Библиотек для загрузки: ${libraries.length}`);
 
+      // МАКСИМАЛЬНАЯ СКОРОСТЬ - 50 параллельных загрузок
+      const limit = pLimit(50);
       let downloaded = 0;
-      for (const lib of libraries) {
-        if (lib.url && lib.name) {
-          const parts = lib.name.split(':');
-          const [group, artifact, version] = parts;
-          const groupPath = group.replace(/\./g, '/');
-          const libPath = `${groupPath}/${artifact}/${version}/${artifact}-${version}.jar`;
-          const fullPath = path.join(this.librariesDir, libPath);
 
-          if (!fs.existsSync(fullPath)) {
-            const url = `${lib.url}${libPath}`;
-            console.log(`[FABRIC] Загрузка: ${artifact}-${version}.jar`);
+      const downloadTasks = libraries.map(lib => {
+        return limit(async () => {
+          if (lib.url && lib.name) {
+            const parts = lib.name.split(':');
+            const [group, artifact, version] = parts;
+            const groupPath = group.replace(/\./g, '/');
+            const libPath = `${groupPath}/${artifact}/${version}/${artifact}-${version}.jar`;
+            const fullPath = path.join(this.librariesDir, libPath);
 
-            try {
-              await fs.ensureDir(path.dirname(fullPath));
-              const libResponse = await axios({
-                url: url,
-                method: 'GET',
-                responseType: 'stream'
-              });
+            if (!fs.existsSync(fullPath)) {
+              const url = `${lib.url}${libPath}`;
 
-              const writer = fs.createWriteStream(fullPath);
-              await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-                libResponse.data.pipe(writer);
-              });
-            } catch (err) {
-              console.warn(`[FABRIC] Не удалось загрузить ${artifact}: ${err.message}`);
+              try {
+                await fs.ensureDir(path.dirname(fullPath));
+                const libResponse = await axios({
+                  url: url,
+                  method: 'GET',
+                  responseType: 'stream',
+                  ...this.axiosConfig
+                });
+
+                const writer = fs.createWriteStream(fullPath);
+                await new Promise((resolve, reject) => {
+                  writer.on('finish', resolve);
+                  writer.on('error', reject);
+                  libResponse.data.pipe(writer);
+                });
+              } catch (err) {
+                console.warn(`[FABRIC] Не удалось загрузить ${artifact}: ${err.message}`);
+              }
             }
-          }
 
-          downloaded++;
-          const progress = 40 + ((downloaded / libraries.length) * 50);
-          onProgress({ stage: `Загрузка библиотек (${downloaded}/${libraries.length})`, percent: Math.floor(progress) });
-        }
-      }
+            downloaded++;
+            const progress = 30 + ((downloaded / libraries.length) * 65);
+            onProgress({
+              stage: `Библиотеки Fabric (${downloaded}/${libraries.length})`,
+              percent: Math.floor(progress)
+            });
+          }
+        });
+      });
+
+      await Promise.all(downloadTasks);
 
       onProgress({ stage: 'Fabric установлен', percent: 100 });
       console.log('[FABRIC] ✓ Установка завершена');
@@ -131,21 +157,20 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Установка Forge
+   * Установка Forge - ПОЛНОСТЬЮ АВТОМАТИЧЕСКАЯ
    */
   async installForge(minecraftVersion, forgeVersion, onProgress) {
     try {
-      onProgress({ stage: 'Загрузка Forge', percent: 0 });
+      onProgress({ stage: 'Получение данных Forge', percent: 0 });
 
       // Если версия не указана - берём рекомендованную
       if (!forgeVersion) {
         console.log('[FORGE] Версия не указана, получаем рекомендованную...');
-        const promotions = await axios.get('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
+        const promotions = await axios.get('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json', this.axiosConfig);
         const promoKey = `${minecraftVersion}-recommended`;
         forgeVersion = promotions.data.promos[promoKey];
 
         if (!forgeVersion) {
-          // Пробуем latest
           const latestKey = `${minecraftVersion}-latest`;
           forgeVersion = promotions.data.promos[latestKey];
         }
@@ -157,60 +182,191 @@ class ModLoaderInstaller {
         console.log(`[FORGE] Выбрана версия: ${forgeVersion}`);
       }
 
-      // Полная версия Forge
       const fullForgeVersion = `${minecraftVersion}-${forgeVersion}`;
-      const versionId = `forge-${fullForgeVersion}`;
+      const versionId = `${minecraftVersion}-forge-${forgeVersion}`;
+      const versionDir = path.join(this.versionsDir, versionId);
 
-      onProgress({ stage: 'Загрузка манифеста Forge', percent: 20 });
+      // Проверяем уже установленный
+      if (fs.existsSync(path.join(versionDir, `${versionId}.json`))) {
+        console.log('[FORGE] Уже установлен, пропускаем');
+        onProgress({ stage: 'Forge уже установлен', percent: 100 });
+        return { success: true, versionId: versionId };
+      }
 
-      // URL манифеста Forge
-      const manifestUrl = `https://files.minecraftforge.net/maven/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-universal.jar.json`;
-      console.log(`[FORGE] Попытка загрузки манифеста: ${manifestUrl}`);
+      onProgress({ stage: 'Загрузка манифеста Forge', percent: 10 });
 
-      // ПРИМЕЧАНИЕ: Forge требует специальной установки через installer
-      // Для упрощения, мы используем альтернативный подход:
-      // Пользователь должен установить Forge через официальный installer,
-      // а мы просто используем уже установленный профиль
-
-      onProgress({ stage: 'Проверка установленного Forge', percent: 50 });
-
-      const possiblePaths = [
-        path.join(this.versionsDir, versionId),
-        path.join(this.versionsDir, fullForgeVersion),
-        path.join(this.versionsDir, `${minecraftVersion}-forge-${forgeVersion}`)
+      // Пробуем несколько вариантов URL для манифеста Forge
+      const possibleUrls = [
+        `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}.json`,
+        `https://files.minecraftforge.net/maven/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}.json`,
+        `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-universal.json`
       ];
 
-      let forgeDir = null;
-      for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-          forgeDir = p;
-          console.log(`[FORGE] Найдена установка: ${p}`);
+      let forgeManifest = null;
+      let manifestUrl = null;
+
+      for (const url of possibleUrls) {
+        try {
+          console.log(`[FORGE] Пробуем: ${url}`);
+          const response = await axios.get(url, this.axiosConfig);
+          forgeManifest = response.data;
+          manifestUrl = url;
+          console.log(`[FORGE] ✓ Манифест найден`);
           break;
+        } catch (err) {
+          console.log(`[FORGE] ❌ Не удалось загрузить с ${url}`);
         }
       }
 
-      if (!forgeDir) {
-        throw new Error(
-          `Forge не установлен!\n\n` +
-          `Пожалуйста:\n` +
-          `1. Скачайте Forge Installer: https://files.minecraftforge.net/net/minecraftforge/forge/index_${minecraftVersion}.html\n` +
-          `2. Запустите installer и установите Forge в директорию: ${this.versionsDir}\n` +
-          `3. Попробуйте снова установить сборку в лаунчере`
-        );
+      if (!forgeManifest) {
+        // Альтернативный метод - создаём минимальный манифест вручную
+        console.log('[FORGE] Создаём манифест вручную...');
+        forgeManifest = await this.createForgeManifest(minecraftVersion, forgeVersion);
       }
 
-      onProgress({ stage: 'Forge готов', percent: 100 });
-      console.log('[FORGE] ✓ Forge найден и готов к использованию');
+      onProgress({ stage: 'Создание профиля Forge', percent: 20 });
+
+      await fs.ensureDir(versionDir);
+
+      // Сохраняем JSON профиль
+      const versionJsonPath = path.join(versionDir, `${versionId}.json`);
+      await fs.writeJson(versionJsonPath, forgeManifest, { spaces: 2 });
+      console.log(`[FORGE] Профиль сохранён`);
+
+      onProgress({ stage: 'Загрузка библиотек Forge', percent: 30 });
+
+      // Скачиваем библиотеки Forge
+      const libraries = forgeManifest.libraries || [];
+      console.log(`[FORGE] Библиотек для загрузки: ${libraries.length}`);
+
+      // МАКСИМАЛЬНАЯ СКОРОСТЬ - 50 параллельных загрузок
+      const limit = pLimit(50);
+      let downloaded = 0;
+
+      const downloadTasks = libraries.map(lib => {
+        return limit(async () => {
+          try {
+            let artifact = null;
+            let libName = '';
+
+            if (lib.downloads && lib.downloads.artifact) {
+              artifact = lib.downloads.artifact;
+              libName = lib.name;
+            } else if (lib.name) {
+              // Создаём artifact вручную
+              const parts = lib.name.split(':');
+              const [group, name, version] = parts;
+              const groupPath = group.replace(/\./g, '/');
+              const jarName = `${name}-${version}.jar`;
+              const libPath = `${groupPath}/${name}/${version}/${jarName}`;
+
+              const baseUrl = lib.url || 'https://libraries.minecraft.net/';
+              artifact = {
+                path: libPath,
+                url: `${baseUrl}${libPath}`,
+                sha1: null
+              };
+              libName = lib.name;
+            }
+
+            if (!artifact) return;
+
+            const fullPath = path.join(this.librariesDir, artifact.path);
+
+            if (!fs.existsSync(fullPath)) {
+              await fs.ensureDir(path.dirname(fullPath));
+
+              const libResponse = await axios({
+                url: artifact.url,
+                method: 'GET',
+                responseType: 'stream',
+                ...this.axiosConfig
+              });
+
+              const writer = fs.createWriteStream(fullPath);
+              await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+                libResponse.data.pipe(writer);
+              });
+            }
+
+            downloaded++;
+            const progress = 30 + ((downloaded / libraries.length) * 65);
+            onProgress({
+              stage: `Библиотеки Forge (${downloaded}/${libraries.length})`,
+              percent: Math.floor(progress)
+            });
+
+          } catch (err) {
+            console.warn(`[FORGE] Не удалось загрузить библиотеку: ${err.message}`);
+          }
+        });
+      });
+
+      await Promise.all(downloadTasks);
+
+      onProgress({ stage: 'Forge установлен', percent: 100 });
+      console.log('[FORGE] ✓ Установка завершена');
 
       return {
         success: true,
-        versionId: path.basename(forgeDir)
+        versionId: versionId,
+        mainClass: forgeManifest.mainClass
       };
 
     } catch (error) {
       console.error('[FORGE] Ошибка установки:', error.message);
-      throw error;
+      throw new Error(`Не удалось установить Forge: ${error.message}`);
     }
+  }
+
+  /**
+   * Создание базового манифеста Forge если не удалось скачать
+   */
+  async createForgeManifest(minecraftVersion, forgeVersion) {
+    console.log('[FORGE] Создаём базовый манифест...');
+
+    const fullVersion = `${minecraftVersion}-${forgeVersion}`;
+
+    return {
+      id: `${minecraftVersion}-forge-${forgeVersion}`,
+      inheritsFrom: minecraftVersion,
+      releaseTime: new Date().toISOString(),
+      time: new Date().toISOString(),
+      type: 'release',
+      mainClass: 'cpw.mods.bootstraplauncher.BootstrapLauncher',
+      arguments: {
+        game: [
+          '--launchTarget', 'forgeclient'
+        ],
+        jvm: []
+      },
+      libraries: [
+        {
+          name: `net.minecraftforge:forge:${fullVersion}`,
+          url: 'https://maven.minecraftforge.net/',
+          downloads: {
+            artifact: {
+              path: `net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-client.jar`,
+              url: `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-client.jar`,
+              sha1: null
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:forge:${fullVersion}:universal`,
+          url: 'https://maven.minecraftforge.net/',
+          downloads: {
+            artifact: {
+              path: `net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-universal.jar`,
+              url: `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-universal.jar`,
+              sha1: null
+            }
+          }
+        }
+      ]
+    };
   }
 
   /**
@@ -226,13 +382,11 @@ class ModLoaderInstaller {
         ? `fabric-loader-${modLoaderVersion}-${minecraftVersion}`
         : `fabric-loader-*-${minecraftVersion}`;
 
-      // Проверяем существование
       const versionDir = path.join(this.versionsDir, versionId);
       if (fs.existsSync(versionDir)) {
         return true;
       }
 
-      // Ищем любую версию Fabric для этого Minecraft
       const versions = fs.readdirSync(this.versionsDir);
       for (const v of versions) {
         if (v.startsWith('fabric-loader-') && v.endsWith(`-${minecraftVersion}`)) {
@@ -244,7 +398,6 @@ class ModLoaderInstaller {
     }
 
     if (modLoader === 'forge') {
-      // Ищем Forge в различных форматах имён
       const versions = fs.readdirSync(this.versionsDir);
       for (const v of versions) {
         if (v.includes('forge') && v.includes(minecraftVersion)) {

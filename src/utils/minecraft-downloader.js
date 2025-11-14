@@ -393,8 +393,8 @@ class MinecraftDownloader {
       console.log(`Нужно скачать библиотек: ${libsToDownload.length} из ${librariesToDownload.length}`);
 
       if (libsToDownload.length > 0) {
-        // Параллельная загрузка библиотек (10 одновременно)
-        const limit = pLimit(10);
+        // МАКСИМАЛЬНАЯ СКОРОСТЬ - Параллельная загрузка библиотек (100 одновременно)
+        const limit = pLimit(100);
         let downloadedLibs = 0;
         const startTime = Date.now();
 
@@ -487,8 +487,8 @@ class MinecraftDownloader {
 
       console.log(`Нужно скачать assets: ${assetsToDownload.length} из ${assets.length}`);
 
-      // Параллельная загрузка assets (20 одновременно)
-      const limit = pLimit(20);
+      // МАКСИМАЛЬНАЯ СКОРОСТЬ - Параллельная загрузка assets (100 одновременно)
+      const limit = pLimit(100);
       let downloadedAssets = 0;
       const startTime = Date.now();
 

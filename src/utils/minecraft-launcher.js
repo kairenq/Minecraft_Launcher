@@ -143,16 +143,30 @@ class MinecraftLauncher {
 
       // Извлечение нативных библиотек
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
+      console.log('OS для natives:', osName);
       logStream.write('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===\n');
+      logStream.write(`OS: ${osName}\n`);
 
       let nativesExtracted = 0;
+      let nativeJarsFound = 0;
+
       for (const lib of versionData.libraries) {
+        // Детальное логирование каждой библиотеки
         if (lib.downloads && lib.downloads.classifiers && lib.natives) {
+          nativeJarsFound++;
           const nativeKey = lib.natives[osName];
+
+          console.log(`\n[LIB] ${lib.name}`);
+          console.log(`  natives ключи:`, Object.keys(lib.natives));
+          console.log(`  нужный ключ для ${osName}:`, nativeKey);
+
           if (nativeKey && lib.downloads.classifiers[nativeKey]) {
             const nativePath = path.join(this.librariesDir, lib.downloads.classifiers[nativeKey].path);
+            console.log(`  путь к JAR: ${nativePath}`);
+            console.log(`  существует: ${fs.existsSync(nativePath)}`);
+
             if (fs.existsSync(nativePath)) {
-              console.log(`Распаковка natives: ${path.basename(nativePath)}`);
+              console.log(`  Распаковка natives: ${path.basename(nativePath)}`);
               logStream.write(`[NATIVES] Extracting: ${path.basename(nativePath)}\n`);
 
               const StreamZip = require('node-stream-zip');
@@ -163,13 +177,18 @@ class MinecraftLauncher {
                   const entries = zip.entries();
                   let extractedFiles = 0;
 
+                  console.log(`  Всего файлов в архиве: ${Object.keys(entries).length}`);
+
                   // Извлекаем только нативные библиотеки (.dll на Windows, .so на Linux, .dylib на macOS)
                   const nativeExtensions = process.platform === 'win32' ? ['.dll'] :
                                           process.platform === 'darwin' ? ['.dylib', '.jnilib'] :
                                           ['.so'];
 
+                  console.log(`  Ищем файлы с расширениями:`, nativeExtensions);
+
                   for (const entryName in entries) {
                     const entry = entries[entryName];
+
                     // Пропускаем директории и META-INF
                     if (entry.isDirectory || entryName.startsWith('META-INF/')) {
                       continue;
@@ -183,46 +202,62 @@ class MinecraftLauncher {
                         const data = zip.entryDataSync(entryName);
                         fs.writeFileSync(destPath, data);
                         extractedFiles++;
+                        console.log(`    ✓ Извлечен: ${path.basename(entryName)} (${(data.length / 1024).toFixed(1)} KB)`);
                         logStream.write(`[NATIVES]   -> ${path.basename(entryName)} (${data.length} bytes)\n`);
                       } catch (err) {
-                        console.error(`Ошибка извлечения ${entryName}:`, err.message);
+                        console.error(`    ❌ Ошибка извлечения ${entryName}:`, err.message);
                         logStream.write(`[NATIVES ERROR] Failed to extract ${entryName}: ${err.message}\n`);
                       }
                     }
                   }
 
-                  console.log(`  Извлечено файлов: ${extractedFiles}`);
+                  console.log(`  Итого извлечено: ${extractedFiles} файлов`);
                   nativesExtracted += extractedFiles;
                   zip.close();
                   resolve();
                 });
-                zip.on('error', reject);
+                zip.on('error', (err) => {
+                  console.error(`  ❌ Ошибка открытия ZIP:`, err.message);
+                  reject(err);
+                });
               });
             } else {
-              console.warn(`⚠️  Native JAR не найден: ${nativePath}`);
+              console.warn(`  ⚠️  Native JAR не найден!`);
               logStream.write(`[NATIVES WARNING] Missing: ${nativePath}\n`);
             }
+          } else {
+            console.log(`  Пропущен: нет classifiers для ключа ${nativeKey}`);
           }
         }
       }
 
-      console.log(`\n✓ Всего извлечено нативных файлов: ${nativesExtracted}`);
+      console.log(`\n=== ИТОГИ ИЗВЛЕЧЕНИЯ ===`);
+      console.log(`Native JAR библиотек найдено: ${nativeJarsFound}`);
+      console.log(`Всего извлечено нативных файлов: ${nativesExtracted}`);
+      logStream.write(`[NATIVES] Found ${nativeJarsFound} native JARs\n`);
       logStream.write(`[NATIVES] Total extracted: ${nativesExtracted} files\n`);
 
       // Проверяем что нативы реально распакованы
       const nativeFiles = fs.readdirSync(nativesDir);
-      console.log(`✓ Файлов в директории natives: ${nativeFiles.length}`);
-      console.log('Список нативных файлов:');
-      nativeFiles.forEach(file => {
-        const fullPath = path.join(nativesDir, file);
-        const stats = fs.statSync(fullPath);
-        console.log(`  - ${file} (${(stats.size / 1024).toFixed(1)} KB)`);
-        logStream.write(`[NATIVES FILE] ${file} (${stats.size} bytes)\n`);
-      });
+      console.log(`Файлов в директории natives: ${nativeFiles.length}`);
+
+      if (nativeFiles.length > 0) {
+        console.log('Список нативных файлов:');
+        nativeFiles.forEach(file => {
+          const fullPath = path.join(nativesDir, file);
+          const stats = fs.statSync(fullPath);
+          console.log(`  - ${file} (${(stats.size / 1024).toFixed(1)} KB)`);
+          logStream.write(`[NATIVES FILE] ${file} (${stats.size} bytes)\n`);
+        });
+      }
 
       if (nativeFiles.length === 0) {
         const errorMsg = 'КРИТИЧЕСКАЯ ОШИБКА: Ни один нативный файл не был извлечен!';
         console.error('\n' + errorMsg);
+        console.error('Возможные причины:');
+        console.error(`1. Native JAR библиотек найдено: ${nativeJarsFound}`);
+        console.error(`2. Операционная система: ${osName} (${process.platform})`);
+        console.error(`3. Директория natives: ${nativesDir}`);
         logStream.write('\n[CRITICAL ERROR] ' + errorMsg + '\n');
         throw new Error(errorMsg);
       }

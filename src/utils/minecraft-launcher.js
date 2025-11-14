@@ -40,16 +40,38 @@ class MinecraftLauncher {
         }
       }
 
-      if (allowed && lib.downloads && lib.downloads.artifact) {
-        const libPath = path.join(this.librariesDir, lib.downloads.artifact.path);
-        if (fs.existsSync(libPath)) {
-          libraries.push(libPath);
+      if (allowed) {
+        let libPath = null;
+
+        // Способ 1: Есть downloads.artifact (стандарт Mojang)
+        if (lib.downloads && lib.downloads.artifact) {
+          libPath = path.join(this.librariesDir, lib.downloads.artifact.path);
+        }
+        // Способ 2: Только name (Forge/Fabric библиотеки)
+        else if (lib.name) {
+          // Формат: "group:artifact:version"
+          // Пример: "cpw.mods:bootstraplauncher:1.0.0"
+          // Путь: "cpw/mods/bootstraplauncher/1.0.0/bootstraplauncher-1.0.0.jar"
+          const parts = lib.name.split(':');
+          if (parts.length >= 3) {
+            const [group, artifact, version] = parts;
+            const groupPath = group.replace(/\./g, '/');
+            const fileName = `${artifact}-${version}.jar`;
+            libPath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
+          }
+        }
+
+        if (libPath && fs.existsSync(libPath)) {
+          // Не добавляем natives в classpath
+          const libName = path.basename(libPath);
+          if (!libName.includes('-natives-')) {
+            libraries.push(libPath);
+          }
+        } else if (libPath) {
+          console.warn(`⚠️  Библиотека не найдена: ${lib.name || 'unknown'}`);
+          console.warn(`   Ожидаемый путь: ${libPath}`);
         }
       }
-
-      // Нативные библиотеки НЕ добавляем в classpath!
-      // Они распаковываются в natives директорию и загружаются через -Djava.library.path
-      // Добавление natives JAR файлов в classpath может вызвать ClassNotFoundException
     }
 
     return libraries;
@@ -451,7 +473,7 @@ class MinecraftLauncher {
       // Переменные для замены
       const variables = {
         auth_player_name: username,
-        version_name: version,
+        version_name: versionId, // Для Forge используем полное имя профиля
         game_directory: gameDir,
         assets_root: this.assetsDir,
         assets_index_name: assetIndexName,
@@ -462,9 +484,12 @@ class MinecraftLauncher {
         user_type: 'legacy',
         version_type: versionData.type || 'release',
         natives_directory: nativesDir,
-        launcher_name: 'minecraft-custom-launcher',
+        launcher_name: 'aureate-launcher',
         launcher_version: '1.0.0',
-        classpath: classpath
+        classpath: classpath,
+        library_directory: this.librariesDir, // Для Forge
+        classpath_separator: separator, // Для Forge
+        path: separator // Разделитель путей для ОС
       };
 
       // JVM аргументы

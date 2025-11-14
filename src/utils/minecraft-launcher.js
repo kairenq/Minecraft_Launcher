@@ -210,6 +210,41 @@ class MinecraftLauncher {
           if (!versionData.assets && baseVersionData.assets) {
             versionData.assets = baseVersionData.assets;
           }
+
+          // КРИТИЧНО: Объединяем JVM arguments из базы и Forge
+          if (baseVersionData.arguments && baseVersionData.arguments.jvm) {
+            if (!versionData.arguments) {
+              versionData.arguments = {};
+            }
+            if (!versionData.arguments.jvm) {
+              versionData.arguments.jvm = [];
+            }
+
+            // Сначала базовые JVM args, потом Forge
+            const baseJvmArgs = baseVersionData.arguments.jvm || [];
+            const forgeJvmArgs = versionData.arguments.jvm || [];
+
+            versionData.arguments.jvm = [...baseJvmArgs, ...forgeJvmArgs];
+
+            console.log(`JVM arguments из базы: ${baseJvmArgs.length}`);
+            console.log(`JVM arguments ${modLoader}: ${forgeJvmArgs.length}`);
+            console.log(`Всего JVM arguments: ${versionData.arguments.jvm.length}`);
+          }
+
+          // Объединяем game arguments тоже
+          if (baseVersionData.arguments && baseVersionData.arguments.game) {
+            if (!versionData.arguments.game) {
+              versionData.arguments.game = [];
+            }
+
+            const baseGameArgs = baseVersionData.arguments.game || [];
+            const forgeGameArgs = versionData.arguments.game || [];
+
+            versionData.arguments.game = [...baseGameArgs, ...forgeGameArgs];
+
+            console.log(`Game arguments из базы: ${baseGameArgs.length}`);
+            console.log(`Game arguments ${modLoader}: ${forgeGameArgs.length}`);
+          }
         } else {
           console.warn(`⚠️  Базовый профиль не найден: ${baseVersionPath}`);
         }
@@ -499,28 +534,69 @@ class MinecraftLauncher {
       jvmArgs.push(`-Xmx${memory}M`);
       jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
+      console.log(`\n=== ОБРАБОТКА JVM ARGUMENTS ===`);
+      console.log(`Всего JVM arguments в JSON: ${versionData.arguments && versionData.arguments.jvm ? versionData.arguments.jvm.length : 0}`);
+
       // Аргументы из версии (если есть)
       if (versionData.arguments && versionData.arguments.jvm) {
+        let addedCount = 0;
+        let skippedCount = 0;
+
         for (const arg of versionData.arguments.jvm) {
           if (typeof arg === 'string') {
-            jvmArgs.push(this.replaceVariables(arg, variables));
+            const replaced = this.replaceVariables(arg, variables);
+            jvmArgs.push(replaced);
+            addedCount++;
+            console.log(`[+] String arg: ${replaced.substring(0, 100)}${replaced.length > 100 ? '...' : ''}`);
           } else if (arg.rules) {
-            // Проверка правил
-            let allowed = false;
+            // ПРАВИЛЬНАЯ обработка правил (как в buildClasspath)
+            let allowed = true; // По умолчанию разрешено
+
+            // Обрабатываем rules
             for (const rule of arg.rules) {
-              if (rule.action === 'allow' && this.checkOsRule(rule.os || {}, osName)) {
-                allowed = true;
+              if (rule.action === 'allow') {
+                // Проверяем OS если указана
+                if (rule.os) {
+                  allowed = this.checkOsRule(rule.os, osName);
+                }
+                // Проверяем features если указаны (пропускаем)
+                else if (rule.features) {
+                  allowed = false; // Features не поддерживаем
+                }
+                // Если нет ни OS ни features - разрешаем
+                else {
+                  allowed = true;
+                }
+              } else if (rule.action === 'disallow') {
+                if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                  allowed = false;
+                }
               }
             }
+
             if (allowed && arg.value) {
               if (Array.isArray(arg.value)) {
-                arg.value.forEach(v => jvmArgs.push(this.replaceVariables(v, variables)));
+                arg.value.forEach(v => {
+                  const replaced = this.replaceVariables(v, variables);
+                  jvmArgs.push(replaced);
+                  addedCount++;
+                  console.log(`[+] Rule arg: ${replaced.substring(0, 100)}${replaced.length > 100 ? '...' : ''}`);
+                });
               } else {
-                jvmArgs.push(this.replaceVariables(arg.value, variables));
+                const replaced = this.replaceVariables(arg.value, variables);
+                jvmArgs.push(replaced);
+                addedCount++;
+                console.log(`[+] Rule arg: ${replaced.substring(0, 100)}${replaced.length > 100 ? '...' : ''}`);
               }
+            } else {
+              skippedCount++;
+              console.log(`[-] Skipped arg (allowed=${allowed}, hasValue=${!!arg.value})`);
             }
           }
         }
+
+        console.log(`\n✓ JVM arguments: добавлено ${addedCount}, пропущено ${skippedCount}`);
+        console.log(`Всего JVM args (включая базовые): ${jvmArgs.length}`);
       } else {
         // Старый формат (< 1.13)
         jvmArgs.push(`-Djava.library.path=${nativesDir}`);

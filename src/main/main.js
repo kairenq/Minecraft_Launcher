@@ -10,6 +10,7 @@ const MinecraftLauncher = require('../utils/minecraft-launcher');
 const ConfigManager = require('../utils/config-manager');
 const ModLoaderInstaller = require('../utils/modloader-installer');
 const ModsDownloader = require('../utils/mods-downloader');
+const ArchiveDownloader = require('../utils/archive-downloader');
 
 let mainWindow;
 let configManager;
@@ -18,6 +19,7 @@ let javaDownloader;
 let minecraftLauncher;
 let modLoaderInstaller;
 let modsDownloader;
+let archiveDownloader;
 
 // Получение пути к директории лаунчера
 function getLauncherDir() {
@@ -65,6 +67,7 @@ function createWindow() {
   minecraftLauncher = new MinecraftLauncher(getLauncherDir());
   modLoaderInstaller = new ModLoaderInstaller(getLauncherDir());
   modsDownloader = new ModsDownloader(getLauncherDir());
+  archiveDownloader = new ArchiveDownloader(getLauncherDir());
 }
 
 app.whenReady().then(() => {
@@ -309,15 +312,41 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
       );
     }
 
-    // 4. Установка модов (если есть)
-    if (modpack.mods && modpack.mods.length > 0) {
+    // 4. Установка модов/контента
+    const instanceDir = path.join(getLauncherDir(), 'instances', modpackId);
+    await fs.ensureDir(instanceDir);
+
+    // Способ 1: Из архива (приоритет)
+    if (modpack.archiveUrl) {
+      mainWindow.webContents.send('install-status', {
+        modpackId: modpackId,
+        status: 'installing-archive'
+      });
+
+      console.log(`[INSTALL] Установка сборки из архива: ${modpack.archiveUrl}`);
+
+      await archiveDownloader.downloadAndExtract(
+        modpack.archiveUrl,
+        instanceDir,
+        (progress) => {
+          mainWindow.webContents.send('download-progress', {
+            type: 'archive',
+            stage: progress.stage || 'Загрузка архива сборки',
+            percent: progress.percent || 0
+          });
+        }
+      );
+
+      console.log(`[INSTALL] ✓ Архив установлен`);
+
+    // Способ 2: Отдельные моды
+    } else if (modpack.mods && modpack.mods.length > 0) {
       mainWindow.webContents.send('install-status', {
         modpackId: modpackId,
         status: 'installing-mods'
       });
 
-      const instanceDir = path.join(getLauncherDir(), 'instances', modpackId);
-      await fs.ensureDir(instanceDir);
+      console.log(`[INSTALL] Установка отдельных модов: ${modpack.mods.length} шт.`);
 
       await modsDownloader.downloadMods(
         modpack.mods,
@@ -330,6 +359,10 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
           });
         }
       );
+
+      console.log(`[INSTALL] ✓ Моды установлены`);
+    } else {
+      console.log(`[INSTALL] Сборка без дополнительного контента (только модлоадер)`);
     }
 
     // Отметить сборку как установленную

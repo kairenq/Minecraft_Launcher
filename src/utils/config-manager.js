@@ -20,10 +20,20 @@ class ConfigManager {
         modLoader: 'vanilla',  // 'vanilla', 'forge' или 'fabric'
         modLoaderVersion: null, // Версия модлоадера (для Forge/Fabric)
         installed: false,
-        mods: []
+
+        // Способ 1: Готовая сборка из архива (ZIP/RAR/7z)
+        archiveUrl: null,  // URL на архив с готовой сборкой (моды, конфиги, ресурспаки и т.д.)
+
+        // Способ 2: Список отдельных модов (используется если archiveUrl = null)
+        mods: []  // Массив объектов модов: { name, url, fileName }
+
+        // Если указан archiveUrl - используется архив
+        // Если archiveUrl = null и есть mods - скачиваются отдельные моды
+        // Если оба null - устанавливается только модлоадер
       }
-      // Чтобы добавить свою сборку, смотрите инструкцию в MODPACKS_GUIDE.md
-      // Примеры с модами в MODPACKS_WITH_MODS_GUIDE.md
+      // Чтобы добавить свою сборку, смотрите инструкцию:
+      // - MODPACKS_GUIDE.md - добавление обычных сборок
+      // - MODPACKS_WITH_MODS_GUIDE.md - добавление сборок с модами
     ];
   }
 

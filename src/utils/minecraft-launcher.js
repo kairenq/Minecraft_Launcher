@@ -327,160 +327,59 @@ class MinecraftLauncher {
       const mainClass = versionData.mainClass;
 
       // ========================================================================
-      // JAR WRAPPER С АБСОЛЮТНЫМИ ПУТЯМИ
-      // ВАЖНО: file:/// URLs НЕ ПОДДЕРЖИВАЮТСЯ в JAR Manifest Class-Path!
-      // Используем абсолютные пути с прямыми слешами
+      // ОКОНЧАТЕЛЬНОЕ РЕШЕНИЕ: Прямая передача classpath через spawn
+      // Исследование показало что JAR Manifest НЕ поддерживает абсолютные пути!
+      // Node.js spawn() АВТОМАТИЧЕСКИ экранирует аргументы - это ПРАВИЛЬНОЕ решение!
+      // Так делают MultiMC, PrismLauncher и другие профессиональные лаунчеры
       // ========================================================================
 
-      console.log('\n=== СОЗДАНИЕ JAR WRAPPER ===');
-      logStream.write('\n=== СОЗДАНИЕ JAR WRAPPER ===\n');
+      console.log('\n=== ПОДГОТОВКА ЗАПУСКА ===');
+      logStream.write('\n=== ПОДГОТОВКА ЗАПУСКА ===\n');
 
-      // Создаём временную директорию для wrapper JAR
-      const wrapperDir = path.join(gameDir, '.wrapper');
-      await fs.ensureDir(wrapperDir);
-      const metaInfDir = path.join(wrapperDir, 'META-INF');
-      await fs.ensureDir(metaInfDir);
+      const separator = process.platform === 'win32' ? ';' : ':';
+      const classpathFinal = filteredLibraries.join(separator);
 
-      // Конвертируем пути для манифеста
-      // ВАЖНО: JAR Manifest Class-Path НЕ поддерживает file:/// URLs!
-      // Используем абсолютные пути с прямыми слешами
-      const classPathForManifest = filteredLibraries.map(lib => {
-        // Просто конвертируем обратные слеши в прямые
-        // Java понимает пути с прямыми слешами даже на Windows
-        return lib.replace(/\\/g, '/');
-      });
-
-      console.log(`Создание манифеста с ${filteredLibraries.length} JAR файлами...`);
-
-      // Создаём MANIFEST.MF с правильным форматом
-      // КРИТИЧНО: Class-Path - это ОДНА строка с путями разделёнными ПРОБЕЛАМИ!
-      // Если строка больше 72 байт, переносим с пробелом в начале
-
-      // Объединяем все пути через пробел
-      const classpathString = classPathForManifest.join(' ');
-
-      // Разбиваем на строки по 70 символов (оставляем запас до 72)
-      const manifestLines = [
-        'Manifest-Version: 1.0',
-        `Main-Class: ${mainClass}`
-      ];
-
-      // Добавляем Class-Path с переносами строк
-      let currentLine = 'Class-Path: ';
-      const words = classpathString.split(' ');
-
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i];
-
-        // Если добавление слова превысит 70 символов, начинаем новую строку
-        if (currentLine.length + word.length + 1 > 70 && currentLine !== 'Class-Path: ') {
-          manifestLines.push(currentLine);
-          currentLine = ' ' + word; // Продолжение с пробела
-        } else {
-          if (currentLine === 'Class-Path: ') {
-            currentLine += word;
-          } else {
-            currentLine += ' ' + word;
-          }
-        }
-      }
-
-      // Добавляем последнюю строку
-      if (currentLine.length > 0) {
-        manifestLines.push(currentLine);
-      }
-
-      // Добавляем пустую строку в конце (обязательно!)
-      manifestLines.push('');
-
-      const manifestContent = manifestLines.join('\r\n');
-
-      await fs.writeFile(path.join(metaInfDir, 'MANIFEST.MF'), manifestContent, 'utf8');
-      console.log(`✓ Манифест создан: ${manifestLines.length} строк, ${(manifestContent.length / 1024).toFixed(1)} KB`);
-      logStream.write(`[MANIFEST] Created with ${filteredLibraries.length} absolute paths\n`);
-
-      // Создаём wrapper.jar используя JAVA команду jar (гарантированно правильный JAR!)
-      const wrapperJarPath = path.join(gameDir, 'minecraft-wrapper.jar');
-
-      // Удаляем старый wrapper
-      if (fs.existsSync(wrapperJarPath)) {
-        await fs.remove(wrapperJarPath);
-      }
-
-      console.log('Создание JAR файла...');
-
-      // Используем Java jar команду для создания правильного JAR
-      const { execSync } = require('child_process');
-
-      try {
-        // Переходим в wrapperDir и создаём JAR
-        // jar cfm wrapper.jar META-INF/MANIFEST.MF
-        execSync(`"${javaPath.replace('java.exe', 'jar.exe')}" cfm "${wrapperJarPath}" META-INF/MANIFEST.MF`, {
-          cwd: wrapperDir,
-          encoding: 'utf8',
-          timeout: 5000
-        });
-
-        const wrapperSize = fs.statSync(wrapperJarPath).size;
-        console.log(`✓ Wrapper JAR создан: ${path.basename(wrapperJarPath)} (${(wrapperSize / 1024).toFixed(1)} KB)`);
-        logStream.write(`[WRAPPER] Created using jar command: ${wrapperJarPath} (${wrapperSize} bytes)\n`);
-      } catch (error) {
-        console.error('Ошибка создания JAR через jar команду:', error.message);
-        console.log('Попытка создать JAR вручную...');
-
-        // Fallback: создаём JAR вручную как ZIP
-        const AdmZip = require('adm-zip');
-        const zip = new AdmZip();
-
-        // Добавляем MANIFEST.MF с правильной структурой
-        zip.addLocalFile(path.join(metaInfDir, 'MANIFEST.MF'), 'META-INF');
-
-        // Записываем JAR
-        zip.writeZip(wrapperJarPath);
-
-        const wrapperSize = fs.statSync(wrapperJarPath).size;
-        console.log(`✓ Wrapper JAR создан (fallback): ${path.basename(wrapperJarPath)} (${(wrapperSize / 1024).toFixed(1)} KB)`);
-        logStream.write(`[WRAPPER] Created using AdmZip fallback: ${wrapperJarPath} (${wrapperSize} bytes)\n`);
-      }
-
-      // Собираем JVM аргументы (БЕЗ -cp, он уже в манифесте wrapper!)
+      console.log(`Classpath: ${filteredLibraries.length} JAR файлов`);
+      console.log(`Длина classpath: ${classpathFinal.length} символов`);
+      logStream.write(`[CLASSPATH] ${filteredLibraries.length} JARs, ${classpathFinal.length} chars\n`);
       const jvmArgsNoCp = jvmArgs.filter((arg, i) => {
         if (arg === '-cp') return false;
         if (i > 0 && jvmArgs[i-1] === '-cp') return false;
         return true;
       });
 
-      // Финальная команда: java [JVM_ARGS] -jar wrapper.jar [GAME_ARGS]
+      // Финальная команда: java [JVM_ARGS] -cp [CLASSPATH] [MAIN_CLASS] [GAME_ARGS]
+      // Node.js spawn() АВТОМАТИЧЕСКИ экранирует все аргументы включая пробелы!
       const allArgs = [
         ...jvmArgsNoCp,
-        '-jar',
-        wrapperJarPath,
+        '-cp',
+        classpathFinal,  // Node.js САМА обернёт в кавычки если нужно!
+        mainClass,
         ...gameArgs
       ];
 
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
-      console.log('Метод: JAR Wrapper с абсолютными путями');
-      console.log('Wrapper: minecraft-wrapper.jar');
+      console.log('Метод: Прямая передача через spawn()');
       console.log('JVM аргументов:', jvmArgsNoCp.length);
+      console.log('Classpath entries:', filteredLibraries.length);
+      console.log('Main class:', mainClass);
       console.log('Game аргументов:', gameArgs.length);
-      console.log('Main class (в манифесте):', mainClass);
-      console.log('Classpath entries (в манифесте):', filteredLibraries.length);
       console.log('RAM выделено:', memory, 'MB');
       console.log('\nЗапуск процесса Java...\n');
 
       // Записываем полную команду запуска в лог
-      logStream.write('\n=== ИСПОЛЬЗУЕТСЯ JAR WRAPPER (absolute paths) ===\n');
-      logStream.write(`Wrapper JAR: ${wrapperJarPath}\n`);
+      logStream.write('\n=== ИСПОЛЬЗУЕТСЯ ПРЯМОЙ ЗАПУСК (spawn) ===\n');
       logStream.write(`Main class: ${mainClass}\n`);
-      logStream.write(`Classpath entries: ${filteredLibraries.length}\n\n`);
+      logStream.write(`Classpath entries: ${filteredLibraries.length}\n`);
+      logStream.write(`Classpath length: ${classpathFinal.length} chars\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgsNoCp.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
+      logStream.write(`\n[CLASSPATH] ${filteredLibraries.length} JARs:\n`);
+      filteredLibraries.forEach((jar, i) => {
+        logStream.write(`  [${i}] ${path.basename(jar)}\n`);
+      });
       logStream.write('\nGAME ARGS:\n');
       gameArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
-      logStream.write('\n=== CLASSPATH в MANIFEST (absolute paths) ===\n');
-      classPathForManifest.forEach((jarPath, i) => {
-        logStream.write(`  [${i}] ${jarPath}\n`);
-      });
       logStream.write('='.repeat(80) + '\n\n');
 
       console.log('\n💾 Логи записываются в:', logFile);
@@ -491,22 +390,22 @@ class MinecraftLauncher {
       const batContent = `@echo off
 chcp 65001 >nul
 echo ========================================
-echo MINECRAFT LAUNCHER (JAR WRAPPER)
+echo MINECRAFT LAUNCHER
 echo ========================================
 echo.
 echo Working directory: ${gameDir}
 echo Java: ${javaPath}
-echo Wrapper JAR: ${path.basename(wrapperJarPath)}
 echo Main class: ${mainClass}
+echo Classpath JARs: ${filteredLibraries.length}
 echo.
 echo Press ENTER to start Minecraft...
 pause >nul
 echo.
-echo Starting Minecraft with JAR wrapper...
+echo Starting Minecraft...
 echo.
 
 cd /d "${gameDir}"
-"${javaPath}" ${jvmArgsNoCp.join(' ')} -jar "${wrapperJarPath}" ${gameArgs.join(' ')}
+"${javaPath}" ${jvmArgsNoCp.join(' ')} -cp "${classpathFinal}" ${mainClass} ${gameArgs.join(' ')}
 
 echo.
 echo ========================================

@@ -365,21 +365,28 @@ class MinecraftDownloader {
 
       console.log(`Найдено библиотек для скачивания: ${librariesToDownload.length}`);
 
+      // Список необязательных библиотек
+      const optionalLibraries = ['text2speech', 'realms'];
+
       // Фильтруем библиотеки, которые нужно скачать или перезагрузить
       const libsToDownload = [];
       for (const { artifact, name } of librariesToDownload) {
         const libPath = path.join(this.librariesDir, artifact.path);
+        const isOptional = optionalLibraries.some(lib => name.toLowerCase().includes(lib));
 
         if (!fs.existsSync(libPath)) {
           libsToDownload.push({ artifact, name, reason: 'missing' });
-        } else if (artifact.sha1) {
-          // Проверяем SHA1 если файл существует
+        } else if (artifact.sha1 && !isOptional) {
+          // Проверяем SHA1 если файл существует (для обязательных библиотек)
           const isValid = await this.verifySha1(libPath, artifact.sha1);
           if (!isValid) {
             console.log(`⚠️  ${name}: SHA1 не совпадает, требуется перезагрузка`);
             libsToDownload.push({ artifact, name, reason: 'corrupted' });
             await fs.remove(libPath);
           }
+        } else if (artifact.sha1 && isOptional) {
+          // Для необязательных библиотек пропускаем проверку SHA1
+          console.log(`ℹ️  ${name}: необязательная библиотека, пропускаем проверку SHA1`);
         }
       }
 
@@ -401,7 +408,20 @@ class MinecraftDownloader {
               if (artifact.sha1) {
                 const isValid = await this.verifySha1(libPath, artifact.sha1);
                 if (!isValid) {
-                  throw new Error(`SHA1 несовпадение для ${name} после загрузки`);
+                  // Список необязательных библиотек, которые можно пропустить при несовпадении SHA1
+                  const optionalLibraries = [
+                    'text2speech',
+                    'realms'
+                  ];
+
+                  const isOptional = optionalLibraries.some(lib => name.toLowerCase().includes(lib));
+
+                  if (isOptional) {
+                    console.warn(`⚠️  SHA1 несовпадение для необязательной библиотеки ${name} - пропускаем`);
+                    // Не бросаем ошибку для необязательных библиотек
+                  } else {
+                    throw new Error(`SHA1 несовпадение для ${name} после загрузки`);
+                  }
                 }
               }
 

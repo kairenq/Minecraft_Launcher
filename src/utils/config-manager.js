@@ -20,7 +20,7 @@ class ConfigManager {
         modLoader: 'forge',
         modLoaderVersion: null,
         installed: false,
-        archiveUrl: 'https://drive.google.com/uc?export=download&id=18PqAl-_CDLgYv1DD_o63vSA4PTNQbL8F',
+        archiveUrl: 'https://github.com/kairenq/Minecraft_Launcher/releases/download/v1.1.3/draconica.zip',
         mods: []
       }
     ];

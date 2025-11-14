@@ -78,10 +78,12 @@ class MinecraftLauncher {
 
   async launch(options, callback) {
     try {
-      const { version, username, memory, javaPath, gameDir } = options;
+      const { version, username, memory, javaPath, gameDir, modLoader, modLoaderVersion } = options;
 
       console.log('\n=== ЗАПУСК MINECRAFT ===');
       console.log('Версия:', version);
+      console.log('Модлоадер:', modLoader || 'vanilla');
+      if (modLoaderVersion) console.log('Версия модлоадера:', modLoaderVersion);
       console.log('Пользователь:', username);
       console.log('Память (RAM):', memory, 'MB');
       console.log('Java путь:', javaPath);
@@ -100,8 +102,39 @@ class MinecraftLauncher {
 
       console.log('Операционная система:', osName);
 
+      // Определение ID версии в зависимости от модлоадера
+      let versionId = version;
+
+      if (modLoader === 'fabric') {
+        // Fabric: fabric-loader-{loaderVersion}-{minecraftVersion}
+        if (modLoaderVersion) {
+          versionId = `fabric-loader-${modLoaderVersion}-${version}`;
+        } else {
+          // Ищем любую fabric версию для этого Minecraft
+          const versions = fs.readdirSync(this.versionsDir);
+          const fabricVersion = versions.find(v => v.startsWith('fabric-loader-') && v.endsWith(`-${version}`));
+          if (fabricVersion) {
+            versionId = fabricVersion;
+          } else {
+            throw new Error(`Fabric не установлен для Minecraft ${version}. Установите сборку заново.`);
+          }
+        }
+        console.log('Используется Fabric профиль:', versionId);
+
+      } else if (modLoader === 'forge') {
+        // Forge: ищем forge профиль
+        const versions = fs.readdirSync(this.versionsDir);
+        const forgeVersion = versions.find(v => v.includes('forge') && v.includes(version));
+        if (forgeVersion) {
+          versionId = forgeVersion;
+          console.log('Используется Forge профиль:', versionId);
+        } else {
+          throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
+        }
+      }
+
       // Загрузка данных версии
-      const versionJsonPath = path.join(this.versionsDir, version, `${version}.json`);
+      const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
 
       if (!fs.existsSync(versionJsonPath)) {
         const error = `Файл версии не найден: ${versionJsonPath}.\nПереустановите сборку.`;
@@ -109,12 +142,16 @@ class MinecraftLauncher {
         throw new Error(error);
       }
 
-      const versionJarPath = path.join(this.versionsDir, version, `${version}.jar`);
-      if (!fs.existsSync(versionJarPath)) {
-        const error = `JAR файл игры не найден: ${versionJarPath}.\nПереустановите сборку.`;
-        console.error(error);
-        throw new Error(error);
+      // Для ванильного Minecraft проверяем JAR файл
+      if (modLoader === 'vanilla' || !modLoader) {
+        const versionJarPath = path.join(this.versionsDir, version, `${version}.jar`);
+        if (!fs.existsSync(versionJarPath)) {
+          const error = `JAR файл игры не найден: ${versionJarPath}.\nПереустановите сборку.`;
+          console.error(error);
+          throw new Error(error);
+        }
       }
+      // Для Forge/Fabric проверка JAR не требуется - они используют свои профили
 
       console.log('Загрузка конфигурации версии...');
       const versionData = await fs.readJson(versionJsonPath);
@@ -264,8 +301,13 @@ class MinecraftLauncher {
 
       // Построение classpath
       const libraries = await this.buildClasspath(versionData, osName);
-      const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
-      libraries.push(versionJar);
+
+      // Добавляем JAR клиента если это ванильный Minecraft
+      // Для Forge/Fabric classpath уже включён в профиль
+      if (modLoader === 'vanilla' || !modLoader) {
+        const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
+        libraries.push(versionJar);
+      }
 
       // КРИТИЧНО: Проверяем существование всех файлов в classpath
       console.log('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===');

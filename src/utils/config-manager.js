@@ -17,10 +17,13 @@ class ConfigManager {
         name: 'Minecraft 1.20.1',
         description: 'Последняя стабильная версия Minecraft. Включает новые биомы, мобов и блоки.',
         minecraftVersion: '1.20.1',
+        modLoader: 'vanilla',  // 'vanilla', 'forge' или 'fabric'
+        modLoaderVersion: null, // Версия модлоадера (для Forge/Fabric)
         installed: false,
         mods: []
       }
       // Чтобы добавить свою сборку, смотрите инструкцию в MODPACKS_GUIDE.md
+      // Примеры с модами в MODPACKS_WITH_MODS_GUIDE.md
     ];
   }
 

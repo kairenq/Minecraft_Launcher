@@ -8,12 +8,16 @@ const MinecraftDownloader = require('../utils/minecraft-downloader');
 const JavaDownloader = require('../utils/java-downloader');
 const MinecraftLauncher = require('../utils/minecraft-launcher');
 const ConfigManager = require('../utils/config-manager');
+const ModLoaderInstaller = require('../utils/modloader-installer');
+const ModsDownloader = require('../utils/mods-downloader');
 
 let mainWindow;
 let configManager;
 let minecraftDownloader;
 let javaDownloader;
 let minecraftLauncher;
+let modLoaderInstaller;
+let modsDownloader;
 
 // Получение пути к директории лаунчера
 function getLauncherDir() {
@@ -59,6 +63,8 @@ function createWindow() {
   minecraftDownloader = new MinecraftDownloader(getLauncherDir());
   javaDownloader = new JavaDownloader(getLauncherDir());
   minecraftLauncher = new MinecraftLauncher(getLauncherDir());
+  modLoaderInstaller = new ModLoaderInstaller(getLauncherDir());
+  modsDownloader = new ModsDownloader(getLauncherDir());
 }
 
 app.whenReady().then(() => {
@@ -168,6 +174,11 @@ ipcMain.handle('download-minecraft', async (event, version) => {
 // Запуск Minecraft
 ipcMain.handle('launch-minecraft', async (event, options) => {
   const config = configManager.getConfig();
+  const modpack = configManager.getModpack(options.modpackId);
+
+  if (!modpack) {
+    throw new Error('Modpack not found');
+  }
 
   return new Promise((resolve, reject) => {
     minecraftLauncher.launch({
@@ -175,7 +186,9 @@ ipcMain.handle('launch-minecraft', async (event, options) => {
       username: options.username || config.username || 'Player',
       memory: options.memory || config.allocatedMemory || 2048,
       javaPath: javaDownloader.getJavaPath(),
-      gameDir: path.join(getLauncherDir(), 'instances', options.modpackId || 'default')
+      gameDir: path.join(getLauncherDir(), 'instances', options.modpackId || 'default'),
+      modLoader: modpack.modLoader || 'vanilla',
+      modLoaderVersion: modpack.modLoaderVersion
     }, (error, process) => {
       if (error) {
         reject(error);
@@ -274,18 +287,49 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
       });
     }
 
-    // 3. Установка модов (если есть)
+    // 3. Установка модлоадера (Forge/Fabric)
+    if (modpack.modLoader && modpack.modLoader !== 'vanilla') {
+      mainWindow.webContents.send('install-status', {
+        modpackId: modpackId,
+        status: 'installing-modloader'
+      });
+
+      await modLoaderInstaller.install(
+        modpack.modLoader,
+        modpack.minecraftVersion,
+        modpack.modLoaderVersion,
+        (progress) => {
+          mainWindow.webContents.send('download-progress', {
+            type: 'modloader',
+            modLoader: modpack.modLoader,
+            stage: progress.stage || 'Установка модлоадера',
+            percent: progress.percent || 0
+          });
+        }
+      );
+    }
+
+    // 4. Установка модов (если есть)
     if (modpack.mods && modpack.mods.length > 0) {
       mainWindow.webContents.send('install-status', {
         modpackId: modpackId,
         status: 'installing-mods'
       });
 
-      const instanceDir = path.join(getLauncherDir(), 'instances', modpackId, 'mods');
+      const instanceDir = path.join(getLauncherDir(), 'instances', modpackId);
       await fs.ensureDir(instanceDir);
 
-      // Здесь будет логика загрузки модов
-      // TODO: Реализовать загрузку модов из URLs
+      await modsDownloader.downloadMods(
+        modpack.mods,
+        instanceDir,
+        (progress) => {
+          mainWindow.webContents.send('download-progress', {
+            type: 'mods',
+            stage: progress.stage || 'Загрузка модов',
+            percent: progress.percent || 0
+          });
+        }
+      );
     }
 
     // Отметить сборку как установленную

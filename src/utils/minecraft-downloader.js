@@ -71,35 +71,59 @@ class MinecraftDownloader {
   async downloadFile(url, dest, onProgress, retries = 3) {
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
+        console.log(`[DOWNLOAD] ${url}`);
+        console.log(`[DEST] ${dest}`);
+
+        await fs.ensureDir(path.dirname(dest));
+
         const response = await axios({
           url: url,
           method: 'GET',
           responseType: 'stream',
-          validateStatus: (status) => status === 200 // Только 200 OK считается успехом
+          timeout: 60000, // 60 секунд таймаут
+          maxRedirects: 5, // Разрешаем редиректы
+          validateStatus: (status) => status >= 200 && status < 300 // 2xx статусы
         });
 
-        const totalLength = response.headers['content-length'];
+        const totalLength = parseInt(response.headers['content-length'], 10);
         let downloadedLength = 0;
+
+        console.log(`[SIZE] ${totalLength} bytes (${(totalLength / 1024 / 1024).toFixed(2)} MB)`);
+
+        const writer = fs.createWriteStream(dest);
 
         response.data.on('data', (chunk) => {
           downloadedLength += chunk.length;
           if (onProgress && totalLength) {
-            const progress = Math.floor((downloadedLength / totalLength) * 100);
+            const progress = downloadedLength / totalLength;
             onProgress(progress);
           }
         });
 
-        await fs.ensureDir(path.dirname(dest));
-        await streamPipeline(response.data, fs.createWriteStream(dest));
+        // Используем Promise для корректного ожидания завершения
+        await new Promise((resolve, reject) => {
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+          response.data.on('error', reject);
+          response.data.pipe(writer);
+        });
+
+        console.log(`[SUCCESS] Downloaded ${downloadedLength} bytes`);
+
+        // Проверяем что размер файла совпадает
+        if (totalLength && downloadedLength !== totalLength) {
+          throw new Error(`Размер файла не совпадает: скачано ${downloadedLength}, ожидалось ${totalLength}`);
+        }
 
         // Успешно скачано
         return;
       } catch (error) {
-        console.error(`Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
+        console.error(`[ERROR] Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
 
         // Удаляем битый файл если он был создан
         if (fs.existsSync(dest)) {
           await fs.remove(dest);
+          console.log(`[CLEANUP] Удален битый файл: ${dest}`);
         }
 
         // Если это последняя попытка - выбрасываем ошибку
@@ -108,7 +132,9 @@ class MinecraftDownloader {
         }
 
         // Ждём перед следующей попыткой (экспоненциальный backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[RETRY] Ожидание ${delay}ms перед следующей попыткой...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
@@ -185,26 +211,33 @@ class MinecraftDownloader {
 
   async verifySha1(filePath, expectedSha1) {
     if (!expectedSha1) {
+      console.log(`[SHA1] Пропуск проверки для ${path.basename(filePath)} (SHA1 не предоставлен)`);
       return true; // Если SHA1 не предоставлен, пропускаем проверку
     }
 
     try {
       const fileBuffer = await fs.readFile(filePath);
+      const fileSize = fileBuffer.length;
+      console.log(`[SHA1] Проверка ${path.basename(filePath)} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+
       const hash = crypto.createHash('sha1');
       hash.update(fileBuffer);
       const actualSha1 = hash.digest('hex');
 
       const isValid = actualSha1.toLowerCase() === expectedSha1.toLowerCase();
 
-      if (!isValid) {
-        console.log(`❌ SHA1 несовпадение для ${path.basename(filePath)}`);
-        console.log(`   Ожидалось: ${expectedSha1}`);
-        console.log(`   Получено:  ${actualSha1}`);
+      if (isValid) {
+        console.log(`[SHA1] ✓ Проверка пройдена: ${actualSha1}`);
+      } else {
+        console.log(`[SHA1] ❌ НЕСОВПАДЕНИЕ для ${path.basename(filePath)}`);
+        console.log(`[SHA1]    Ожидалось: ${expectedSha1}`);
+        console.log(`[SHA1]    Получено:  ${actualSha1}`);
+        console.log(`[SHA1]    Размер файла: ${fileSize} bytes`);
       }
 
       return isValid;
     } catch (error) {
-      console.error(`Ошибка проверки SHA1 для ${filePath}:`, error.message);
+      console.error(`[SHA1] Ошибка проверки для ${filePath}:`, error.message);
       return false;
     }
   }
@@ -224,36 +257,64 @@ class MinecraftDownloader {
       // Загрузка JAR клиента
       onProgress({ stage: 'Загрузка клиента', percent: 10 });
       const clientJarPath = path.join(versionDir, `${version}.jar`);
+      const clientUrl = versionData.downloads.client.url;
       const clientSha1 = versionData.downloads.client.sha1;
+      const clientSize = versionData.downloads.client.size;
+
+      console.log('\n' + '='.repeat(80));
+      console.log('ЗАГРУЗКА CLIENT.JAR');
+      console.log('='.repeat(80));
+      console.log(`URL: ${clientUrl}`);
+      console.log(`Путь: ${clientJarPath}`);
+      console.log(`Ожидаемый SHA1: ${clientSha1}`);
+      console.log(`Ожидаемый размер: ${(clientSize / 1024 / 1024).toFixed(2)} MB`);
+      console.log('='.repeat(80));
 
       // Проверяем существующий файл
       let needDownload = true;
       if (fs.existsSync(clientJarPath)) {
-        console.log('Проверка целостности client.jar...');
+        console.log('\n[CHECK] Client.jar уже существует, проверяем целостность...');
+        const stats = fs.statSync(clientJarPath);
+        console.log(`[CHECK] Текущий размер файла: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+
         const isValid = await this.verifySha1(clientJarPath, clientSha1);
         if (isValid) {
-          console.log('✓ Client.jar уже существует и валиден');
+          console.log('[CHECK] ✓ Client.jar валиден, загрузка не требуется\n');
           needDownload = false;
         } else {
-          console.log('⚠️  Client.jar поврежден, требуется перезагрузка');
+          console.log('[CHECK] ⚠️  Client.jar поврежден, требуется перезагрузка');
           await fs.remove(clientJarPath);
+          console.log('[CHECK] Старый файл удален\n');
         }
       }
 
       if (needDownload) {
+        console.log('[DOWNLOAD] Начинаем загрузку client.jar...\n');
+
         await this.downloadFile(
-          versionData.downloads.client.url,
+          clientUrl,
           clientJarPath,
           (p) => onProgress({ stage: 'Загрузка клиента', percent: 10 + (p * 0.3) })
         );
 
+        console.log('\n[VERIFY] Проверка целостности загруженного client.jar...');
+
+        // Проверяем размер файла
+        const stats = fs.statSync(clientJarPath);
+        console.log(`[VERIFY] Загружено: ${stats.size} bytes (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[VERIFY] Ожидалось: ${clientSize} bytes (${(clientSize / 1024 / 1024).toFixed(2)} MB)`);
+
+        if (stats.size !== clientSize) {
+          console.log(`[VERIFY] ❌ РАЗМЕР НЕ СОВПАДАЕТ!`);
+          throw new Error(`Client.jar имеет неправильный размер! Загружено ${stats.size}, ожидалось ${clientSize}`);
+        }
+
         // Проверяем SHA1 после загрузки
-        console.log('Проверка целостности загруженного client.jar...');
         const isValid = await this.verifySha1(clientJarPath, clientSha1);
         if (!isValid) {
           throw new Error(`Client.jar поврежден после загрузки! SHA1 не совпадает.`);
         }
-        console.log('✓ Client.jar загружен и проверен');
+        console.log('[VERIFY] ✓ Client.jar успешно загружен и проверен\n');
       }
 
       // Загрузка библиотек

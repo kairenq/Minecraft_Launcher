@@ -551,6 +551,48 @@ class MinecraftLauncher {
       console.log(`\n=== ОБРАБОТКА JVM ARGUMENTS ===`);
       console.log(`Всего JVM arguments в JSON: ${versionData.arguments && versionData.arguments.jvm ? versionData.arguments.jvm.length : 0}`);
 
+      // Для Forge 1.17+: загружаем аргументы из win_args.txt/unix_args.txt
+      if (modLoader === 'forge' && versionId.includes('forge')) {
+        const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
+
+        // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
+        // Из versionId (например "1.18.2-forge-40.3.0") извлекаем "1.18.2-40.3.0"
+        const forgeFullVersion = versionId.replace('forge-', '').replace('-', '-forge-');
+
+        const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
+
+        console.log(`\n>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
+
+        if (fs.existsSync(argsFilePath)) {
+          try {
+            const forgeArgsContent = await fs.readFile(argsFilePath, 'utf8');
+            console.log(`✓ Найден ${argsFileName}, содержимое:`);
+            console.log(forgeArgsContent.substring(0, 500));
+
+            // Парсим аргументы (они разделены пробелами, но пути в module path - через ; или :)
+            const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
+
+            console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments из ${argsFileName}`);
+
+            // Добавляем Forge аргументы ПЕРЕД базовыми JVM args
+            forgeArgsParsed.forEach(arg => {
+              // Заменяем относительные пути на абсолютные
+              if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                arg = path.join(this.librariesDir, '..', arg);
+              }
+              jvmArgs.push(arg);
+            });
+
+            console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);
+          } catch (err) {
+            console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
+          }
+        } else {
+          console.warn(`⚠️  Файл ${argsFileName} не найден: ${argsFilePath}`);
+          console.warn(`   Forge 1.17+ требует этот файл для запуска!`);
+        }
+      }
+
       // Аргументы из версии (если есть)
       if (versionData.arguments && versionData.arguments.jvm) {
         let addedCount = 0;

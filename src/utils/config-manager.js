@@ -13,27 +13,16 @@ class ConfigManager {
   getDefaultModpacks() {
     return [
       {
-        id: 'vanilla-1-20-1',
-        name: 'Minecraft 1.20.1',
-        description: 'Последняя стабильная версия Minecraft. Включает новые биомы, мобов и блоки.',
-        minecraftVersion: '1.20.1',
-        modLoader: 'vanilla',  // 'vanilla', 'forge' или 'fabric'
-        modLoaderVersion: null, // Версия модлоадера (для Forge/Fabric)
+        id: 'draconica-1-18-2',
+        name: 'Draconica',
+        description: 'Погрузитесь в эпический мир драконов, магии и приключений! Приручайте легендарных существ, исследуйте мистические измерения и станьте величайшим повелителем стихий.',
+        minecraftVersion: '1.18.2',
+        modLoader: 'forge',
+        modLoaderVersion: null,
         installed: false,
-
-        // Способ 1: Готовая сборка из архива (ZIP/RAR/7z)
-        archiveUrl: null,  // URL на архив с готовой сборкой (моды, конфиги, ресурспаки и т.д.)
-
-        // Способ 2: Список отдельных модов (используется если archiveUrl = null)
-        mods: []  // Массив объектов модов: { name, url, fileName }
-
-        // Если указан archiveUrl - используется архив
-        // Если archiveUrl = null и есть mods - скачиваются отдельные моды
-        // Если оба null - устанавливается только модлоадер
+        archiveUrl: 'https://drive.google.com/uc?export=download&id=18PqAl-_CDLgYv1DD_o63vSA4PTNQbL8F',
+        mods: []
       }
-      // Чтобы добавить свою сборку, смотрите инструкцию:
-      // - MODPACKS_GUIDE.md - добавление обычных сборок
-      // - MODPACKS_WITH_MODS_GUIDE.md - добавление сборок с модами
     ];
   }
 
@@ -63,7 +52,7 @@ class ConfigManager {
         const oldModpacks = fs.readJsonSync(this.modpacksPath);
         // Сохраняем статус установки для каждой версии
         oldModpacks.forEach(mp => {
-          if (mp.installed && mp.id.startsWith('vanilla-')) {
+          if (mp.installed) {
             installedStates[mp.id] = true;
           }
         });

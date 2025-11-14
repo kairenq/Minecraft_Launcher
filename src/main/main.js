@@ -24,7 +24,7 @@ let archiveDownloader;
 // Получение пути к директории лаунчера
 function getLauncherDir() {
   const homeDir = os.homedir();
-  return path.join(homeDir, '.minecraft-custom-launcher');
+  return path.join(homeDir, 'Aureate');
 }
 
 function createWindow() {
@@ -44,7 +44,7 @@ function createWindow() {
       contextIsolation: false,
       enableRemoteModule: true
     },
-    icon: path.join(__dirname, '../../assets/icon.png')
+    icon: path.join(__dirname, '../../assets/logo.ico')
   });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));

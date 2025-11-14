@@ -1,7 +1,7 @@
 {
-  "name": "minecraft-launcher",
+  "name": "aureate-launcher",
   "version": "1.0.0",
-  "description": "Профессиональный лаунчер Minecraft с максимальной производительностью",
+  "description": "Aureate Launcher - Премиум лаунчер для Minecraft с кастомными модпаками",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -15,8 +15,8 @@
     "pack": "electron-builder --dir"
   },
   "build": {
-    "appId": "com.minecraft.launcher",
-    "productName": "Minecraft Launcher",
+    "appId": "com.aureate.launcher",
+    "productName": "Aureate Launcher",
     "directories": {
       "output": "dist"
     },
@@ -33,13 +33,14 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "assets/logo.ico"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "icon": "assets/icon.png",
+      "icon": "assets/logo.ico",
       "category": "Game"
     },
     "nsis": {

@@ -190,13 +190,27 @@ class MinecraftLauncher {
           const baseVersionData = await fs.readJson(baseVersionPath);
           console.log('✓ Загружен базовый профиль:', versionData.inheritsFrom);
 
+          // ЛОГИРОВАНИЕ: что в Forge профиле ДО объединения
+          console.log('\n>>> DEBUG: Forge профиль ДО объединения:');
+          console.log(`  - libraries: ${versionData.libraries ? versionData.libraries.length : 'НЕТ'}`);
+          console.log(`  - arguments.jvm: ${versionData.arguments && versionData.arguments.jvm ? versionData.arguments.jvm.length : 'НЕТ'}`);
+          console.log(`  - arguments.game: ${versionData.arguments && versionData.arguments.game ? versionData.arguments.game.length : 'НЕТ'}`);
+
+          // Показываем первые 3 Forge JVM arguments если есть
+          if (versionData.arguments && versionData.arguments.jvm && versionData.arguments.jvm.length > 0) {
+            console.log('  Первые 3 Forge JVM arguments:');
+            versionData.arguments.jvm.slice(0, 3).forEach((arg, i) => {
+              console.log(`    [${i}] ${typeof arg === 'string' ? arg : JSON.stringify(arg).substring(0, 100)}`);
+            });
+          }
+
           // Объединяем библиотеки: сначала базовые, потом Forge/Fabric
           const baseLibraries = baseVersionData.libraries || [];
           const modLoaderLibraries = versionData.libraries || [];
 
           versionData.libraries = [...baseLibraries, ...modLoaderLibraries];
 
-          console.log(`Библиотек из базы: ${baseLibraries.length}`);
+          console.log(`\nБиблиотек из базы: ${baseLibraries.length}`);
           console.log(`Библиотек ${modLoader}: ${modLoaderLibraries.length}`);
           console.log(`Всего библиотек: ${versionData.libraries.length}`);
 

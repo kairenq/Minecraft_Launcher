@@ -19,39 +19,8 @@ class ConfigManager {
         minecraftVersion: '1.20.1',
         installed: false,
         mods: []
-      },
-      {
-        id: 'vanilla-1-19-4',
-        name: 'Minecraft 1.19.4',
-        description: 'The Wild Update - новые биомы болот и глубокой тьмы, Warden и Ancient Cities.',
-        minecraftVersion: '1.19.4',
-        installed: false,
-        mods: []
-      },
-      {
-        id: 'vanilla-1-18-2',
-        name: 'Minecraft 1.18.2',
-        description: 'Caves & Cliffs - обновленная генерация мира, новые пещеры и горы.',
-        minecraftVersion: '1.18.2',
-        installed: false,
-        mods: []
-      },
-      {
-        id: 'vanilla-1-16-5',
-        name: 'Minecraft 1.16.5',
-        description: 'Nether Update - обновленный ад с новыми биомами, мобами и блоками. Популярна для модов.',
-        minecraftVersion: '1.16.5',
-        installed: false,
-        mods: []
-      },
-      {
-        id: 'vanilla-1-12-2',
-        name: 'Minecraft 1.12.2',
-        description: 'Классическая версия с огромным количеством модов. Самая популярная версия для модпаков.',
-        minecraftVersion: '1.12.2',
-        installed: false,
-        mods: []
       }
+      // Чтобы добавить свою сборку, смотрите инструкцию в MODPACKS_GUIDE.md
     ];
   }
 

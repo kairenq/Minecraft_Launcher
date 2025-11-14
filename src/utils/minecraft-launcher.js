@@ -143,122 +143,121 @@ class MinecraftLauncher {
 
       // Извлечение нативных библиотек
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
-      console.log('OS для natives:', osName);
+      console.log('Platform:', process.platform);
       logStream.write('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===\n');
-      logStream.write(`OS: ${osName}\n`);
 
       let nativesExtracted = 0;
-      let nativeJarsFound = 0;
 
-      for (const lib of versionData.libraries) {
-        // Детальное логирование каждой библиотеки
-        if (lib.downloads && lib.downloads.classifiers && lib.natives) {
-          nativeJarsFound++;
-          const nativeKey = lib.natives[osName];
+      // НОВЫЙ ПОДХОД: Сканируем весь libraries директорию и ищем все JAR с "-natives-" в названии
+      console.log('Сканируем libraries директорию:', this.librariesDir);
 
-          console.log(`\n[LIB] ${lib.name}`);
-          console.log(`  natives ключи:`, Object.keys(lib.natives));
-          console.log(`  нужный ключ для ${osName}:`, nativeKey);
+      const findNativeJars = (dir) => {
+        const results = [];
+        const items = fs.readdirSync(dir);
 
-          if (nativeKey && lib.downloads.classifiers[nativeKey]) {
-            const nativePath = path.join(this.librariesDir, lib.downloads.classifiers[nativeKey].path);
-            console.log(`  путь к JAR: ${nativePath}`);
-            console.log(`  существует: ${fs.existsSync(nativePath)}`);
+        for (const item of items) {
+          const fullPath = path.join(dir, item);
+          const stat = fs.statSync(fullPath);
 
-            if (fs.existsSync(nativePath)) {
-              console.log(`  Распаковка natives: ${path.basename(nativePath)}`);
-              logStream.write(`[NATIVES] Extracting: ${path.basename(nativePath)}\n`);
-
-              const StreamZip = require('node-stream-zip');
-              const zip = new StreamZip({ file: nativePath, storeEntries: true });
-
-              await new Promise((resolve, reject) => {
-                zip.on('ready', () => {
-                  const entries = zip.entries();
-                  let extractedFiles = 0;
-
-                  console.log(`  Всего файлов в архиве: ${Object.keys(entries).length}`);
-
-                  // Извлекаем только нативные библиотеки (.dll на Windows, .so на Linux, .dylib на macOS)
-                  const nativeExtensions = process.platform === 'win32' ? ['.dll'] :
-                                          process.platform === 'darwin' ? ['.dylib', '.jnilib'] :
-                                          ['.so'];
-
-                  console.log(`  Ищем файлы с расширениями:`, nativeExtensions);
-
-                  for (const entryName in entries) {
-                    const entry = entries[entryName];
-
-                    // Пропускаем директории и META-INF
-                    if (entry.isDirectory || entryName.startsWith('META-INF/')) {
-                      continue;
-                    }
-
-                    // Извлекаем только файлы с нужными расширениями
-                    const hasValidExtension = nativeExtensions.some(ext => entryName.toLowerCase().endsWith(ext));
-                    if (hasValidExtension) {
-                      const destPath = path.join(nativesDir, path.basename(entryName));
-                      try {
-                        const data = zip.entryDataSync(entryName);
-                        fs.writeFileSync(destPath, data);
-                        extractedFiles++;
-                        console.log(`    ✓ Извлечен: ${path.basename(entryName)} (${(data.length / 1024).toFixed(1)} KB)`);
-                        logStream.write(`[NATIVES]   -> ${path.basename(entryName)} (${data.length} bytes)\n`);
-                      } catch (err) {
-                        console.error(`    ❌ Ошибка извлечения ${entryName}:`, err.message);
-                        logStream.write(`[NATIVES ERROR] Failed to extract ${entryName}: ${err.message}\n`);
-                      }
-                    }
-                  }
-
-                  console.log(`  Итого извлечено: ${extractedFiles} файлов`);
-                  nativesExtracted += extractedFiles;
-                  zip.close();
-                  resolve();
-                });
-                zip.on('error', (err) => {
-                  console.error(`  ❌ Ошибка открытия ZIP:`, err.message);
-                  reject(err);
-                });
-              });
-            } else {
-              console.warn(`  ⚠️  Native JAR не найден!`);
-              logStream.write(`[NATIVES WARNING] Missing: ${nativePath}\n`);
-            }
-          } else {
-            console.log(`  Пропущен: нет classifiers для ключа ${nativeKey}`);
+          if (stat.isDirectory()) {
+            results.push(...findNativeJars(fullPath));
+          } else if (item.endsWith('.jar') && item.includes('-natives-')) {
+            results.push(fullPath);
           }
+        }
+
+        return results;
+      };
+
+      const allNativeJars = findNativeJars(this.librariesDir);
+      console.log(`Найдено JAR файлов с natives: ${allNativeJars.length}`);
+
+      // Фильтруем для текущей платформы
+      const platformSuffix = process.platform === 'win32' ? 'windows' :
+                            process.platform === 'darwin' ? 'macos' : 'linux';
+
+      let nativeJarsForPlatform = allNativeJars.filter(jar => path.basename(jar).includes(`-natives-${platformSuffix}`));
+      console.log(`Подходящих для ${platformSuffix}: ${nativeJarsForPlatform.length}`);
+
+      // Если не нашли для текущей платформы - берём все
+      if (nativeJarsForPlatform.length === 0) {
+        console.warn(`⚠️  Нет natives для ${platformSuffix}, извлекаем из всех`);
+        nativeJarsForPlatform = allNativeJars;
+      }
+
+      for (const nativePath of nativeJarsForPlatform) {
+        const baseName = path.basename(nativePath);
+        console.log(`\n[NATIVES] ${baseName}`);
+        logStream.write(`[NATIVES] Extracting: ${baseName}\n`);
+
+        try {
+          const StreamZip = require('node-stream-zip');
+          const zip = new StreamZip({ file: nativePath, storeEntries: true });
+
+          await new Promise((resolve, reject) => {
+            zip.on('ready', () => {
+              const entries = zip.entries();
+              let extractedFiles = 0;
+
+              // Извлекаем только нативные библиотеки
+              const nativeExtensions = process.platform === 'win32' ? ['.dll'] :
+                                      process.platform === 'darwin' ? ['.dylib', '.jnilib'] :
+                                      ['.so'];
+
+              for (const entryName in entries) {
+                const entry = entries[entryName];
+
+                if (entry.isDirectory || entryName.startsWith('META-INF/')) {
+                  continue;
+                }
+
+                const hasValidExtension = nativeExtensions.some(ext => entryName.toLowerCase().endsWith(ext));
+                if (hasValidExtension) {
+                  const destPath = path.join(nativesDir, path.basename(entryName));
+                  try {
+                    const data = zip.entryDataSync(entryName);
+                    fs.writeFileSync(destPath, data);
+                    extractedFiles++;
+                    console.log(`  ✓ ${path.basename(entryName)} (${(data.length / 1024).toFixed(1)} KB)`);
+                    logStream.write(`[NATIVES]   -> ${path.basename(entryName)} (${data.length} bytes)\n`);
+                  } catch (err) {
+                    console.error(`  ❌ ${entryName}:`, err.message);
+                  }
+                }
+              }
+
+              console.log(`  Извлечено: ${extractedFiles} файлов`);
+              nativesExtracted += extractedFiles;
+              zip.close();
+              resolve();
+            });
+            zip.on('error', reject);
+          });
+        } catch (err) {
+          console.error(`[ERROR] ${baseName}:`, err.message);
         }
       }
 
       console.log(`\n=== ИТОГИ ИЗВЛЕЧЕНИЯ ===`);
-      console.log(`Native JAR библиотек найдено: ${nativeJarsFound}`);
-      console.log(`Всего извлечено нативных файлов: ${nativesExtracted}`);
-      logStream.write(`[NATIVES] Found ${nativeJarsFound} native JARs\n`);
+      console.log(`Найдено native JAR: ${nativeJarsForPlatform.length}`);
+      console.log(`Извлечено файлов: ${nativesExtracted}`);
       logStream.write(`[NATIVES] Total extracted: ${nativesExtracted} files\n`);
 
-      // Проверяем что нативы реально распакованы
+      // Проверяем результат
       const nativeFiles = fs.readdirSync(nativesDir);
-      console.log(`Файлов в директории natives: ${nativeFiles.length}`);
+      console.log(`Файлов в natives: ${nativeFiles.length}`);
 
       if (nativeFiles.length > 0) {
-        console.log('Список нативных файлов:');
+        console.log('Список:');
         nativeFiles.forEach(file => {
-          const fullPath = path.join(nativesDir, file);
-          const stats = fs.statSync(fullPath);
+          const stats = fs.statSync(path.join(nativesDir, file));
           console.log(`  - ${file} (${(stats.size / 1024).toFixed(1)} KB)`);
-          logStream.write(`[NATIVES FILE] ${file} (${stats.size} bytes)\n`);
         });
-      }
-
-      if (nativeFiles.length === 0) {
-        const errorMsg = 'КРИТИЧЕСКАЯ ОШИБКА: Ни один нативный файл не был извлечен!';
-        console.error('\n' + errorMsg);
-        console.error('Возможные причины:');
-        console.error(`1. Native JAR библиотек найдено: ${nativeJarsFound}`);
-        console.error(`2. Операционная система: ${osName} (${process.platform})`);
-        console.error(`3. Директория natives: ${nativesDir}`);
-        logStream.write('\n[CRITICAL ERROR] ' + errorMsg + '\n');
+      } else {
+        const errorMsg = 'Ни один нативный файл не был извлечен!';
+        console.error('\n❌', errorMsg);
+        console.error('Native JARs найдено:', allNativeJars.length);
+        console.error('Для платформы:', nativeJarsForPlatform.length);
         throw new Error(errorMsg);
       }
 

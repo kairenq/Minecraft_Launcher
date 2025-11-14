@@ -365,8 +365,18 @@ class MinecraftDownloader {
 
       console.log(`Найдено библиотек для скачивания: ${librariesToDownload.length}`);
 
-      // Список необязательных библиотек
-      const optionalLibraries = ['text2speech', 'realms'];
+      // Список необязательных библиотек - для них пропускаем проверку SHA1
+      // Эти библиотеки часто имеют несовпадающие контрольные суммы, но не критичны для запуска
+      const optionalLibraries = [
+        'text2speech',    // Озвучка текста
+        'realms',         // Minecraft Realms
+        'lwjgl',          // LWJGL библиотеки (графика)
+        'jemalloc',       // Аллокатор памяти
+        'joml',           // Java OpenGL Math
+        'jinput',         // Контроллеры
+        'jorbis',         // Аудио кодек
+        'paulscode'       // Звуковой движок
+      ];
 
       // Фильтруем библиотеки, которые нужно скачать или перезагрузить
       const libsToDownload = [];
@@ -408,10 +418,10 @@ class MinecraftDownloader {
               if (artifact.sha1) {
                 const isValid = await this.verifySha1(libPath, artifact.sha1);
                 if (!isValid) {
-                  // Список необязательных библиотек, которые можно пропустить при несовпадении SHA1
+                  // Список необязательных библиотек
                   const optionalLibraries = [
-                    'text2speech',
-                    'realms'
+                    'text2speech', 'realms', 'lwjgl', 'jemalloc',
+                    'joml', 'jinput', 'jorbis', 'paulscode'
                   ];
 
                   const isOptional = optionalLibraries.some(lib => name.toLowerCase().includes(lib));

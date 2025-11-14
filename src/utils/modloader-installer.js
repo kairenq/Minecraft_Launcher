@@ -197,9 +197,19 @@ class ModLoaderInstaller {
 
       // Пробуем несколько вариантов URL для манифеста Forge
       const possibleUrls = [
+        // Современный формат
         `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}.json`,
         `https://files.minecraftforge.net/maven/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}.json`,
-        `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-universal.json`
+
+        // Формат с installer
+        `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-installer.json`,
+
+        // Старые форматы
+        `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-universal.json`,
+        `https://files.minecraftforge.net/maven/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}-universal.json`,
+
+        // Альтернативные зеркала
+        `https://bmclapi2.bangbang93.com/maven/net/minecraftforge/forge/${fullForgeVersion}/forge-${fullForgeVersion}.json`
       ];
 
       let forgeManifest = null;
@@ -276,19 +286,40 @@ class ModLoaderInstaller {
             if (!fs.existsSync(fullPath)) {
               await fs.ensureDir(path.dirname(fullPath));
 
-              const libResponse = await axios({
-                url: artifact.url,
-                method: 'GET',
-                responseType: 'stream',
-                ...this.axiosConfig
-              });
+              // Попытка загрузки с retry логикой
+              let retries = 3;
+              let lastError = null;
 
-              const writer = fs.createWriteStream(fullPath);
-              await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-                libResponse.data.pipe(writer);
-              });
+              for (let attempt = 0; attempt < retries; attempt++) {
+                try {
+                  const libResponse = await axios({
+                    url: artifact.url,
+                    method: 'GET',
+                    responseType: 'stream',
+                    ...this.axiosConfig
+                  });
+
+                  const writer = fs.createWriteStream(fullPath);
+                  await new Promise((resolve, reject) => {
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                    libResponse.data.pipe(writer);
+                  });
+
+                  // Успешно загружено
+                  break;
+                } catch (err) {
+                  lastError = err;
+                  if (attempt < retries - 1) {
+                    console.warn(`[FORGE] Попытка ${attempt + 1}/${retries} не удалась для ${libName}, повторяем...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                  }
+                }
+              }
+
+              if (lastError && !fs.existsSync(fullPath)) {
+                console.warn(`[FORGE] Не удалось загрузить ${libName} после ${retries} попыток - пропускаем`);
+              }
             }
 
             downloaded++;
@@ -300,6 +331,7 @@ class ModLoaderInstaller {
 
           } catch (err) {
             console.warn(`[FORGE] Не удалось загрузить библиотеку: ${err.message}`);
+            // Не падаем, продолжаем загрузку остальных библиотек
           }
         });
       });

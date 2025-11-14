@@ -82,37 +82,74 @@ class ArchiveDownloader {
   }
 
   /**
-   * Скачивание файла с прогрессом
+   * Скачивание файла с прогрессом и retry логикой
    */
   async downloadFile(url, dest, onProgress) {
-    const response = await axios({
-      url: url,
-      method: 'GET',
-      responseType: 'stream',
-      timeout: 600000, // 10 минут на архив
-      maxRedirects: 10
-    });
+    const maxRetries = 3;
+    let lastError = null;
 
-    const totalSize = parseInt(response.headers['content-length'], 10);
-    let downloadedSize = 0;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`[ARCHIVE] Попытка загрузки ${attempt + 1}/${maxRetries}`);
 
-    await fs.ensureDir(path.dirname(dest));
-    const writer = fs.createWriteStream(dest);
+        const response = await axios({
+          url: url,
+          method: 'GET',
+          responseType: 'stream',
+          timeout: 600000, // 10 минут на архив
+          maxRedirects: 10,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity
+        });
 
-    response.data.on('data', (chunk) => {
-      downloadedSize += chunk.length;
-      if (totalSize && onProgress) {
-        const progress = (downloadedSize / totalSize) * 100;
-        onProgress(progress);
+        const totalSize = parseInt(response.headers['content-length'], 10);
+        let downloadedSize = 0;
+
+        await fs.ensureDir(path.dirname(dest));
+        const writer = fs.createWriteStream(dest);
+
+        response.data.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+          if (totalSize && onProgress) {
+            const progress = (downloadedSize / totalSize) * 100;
+            onProgress(progress);
+          }
+        });
+
+        await new Promise((resolve, reject) => {
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+          response.data.on('error', reject);
+          response.data.pipe(writer);
+        });
+
+        // Проверка что файл не пустой
+        const stats = await fs.stat(dest);
+        if (stats.size === 0) {
+          throw new Error('Загружен пустой файл');
+        }
+
+        console.log(`[ARCHIVE] ✓ Файл загружен успешно (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        return; // Успешно загружено
+
+      } catch (error) {
+        lastError = error;
+        console.error(`[ARCHIVE] Ошибка загрузки (попытка ${attempt + 1}): ${error.message}`);
+
+        // Удаляем частично загруженный файл
+        if (fs.existsSync(dest)) {
+          await fs.remove(dest);
+        }
+
+        if (attempt < maxRetries - 1) {
+          const waitTime = Math.pow(2, attempt) * 2000; // 2s, 4s, 8s
+          console.log(`[ARCHIVE] Ожидание ${waitTime / 1000}с перед следующей попыткой...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
-    });
+    }
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-      response.data.on('error', reject);
-      response.data.pipe(writer);
-    });
+    throw new Error(`Не удалось загрузить архив после ${maxRetries} попыток: ${lastError.message}`);
   }
 
   /**
@@ -125,6 +162,10 @@ class ArchiveDownloader {
       const zip = new AdmZip(zipPath);
       const zipEntries = zip.getEntries();
 
+      if (zipEntries.length === 0) {
+        throw new Error('Архив пуст');
+      }
+
       console.log(`[ARCHIVE] Файлов в архиве: ${zipEntries.length}`);
 
       // Проверяем структуру архива
@@ -135,22 +176,39 @@ class ArchiveDownloader {
         console.log(`[ARCHIVE] Обнаружена корневая папка, извлекаем её содержимое`);
         const rootFolderName = zipEntries[0].entryName.split('/')[0];
 
-        zip.extractAllTo(this.tempDir, true);
-        const extractedRoot = path.join(this.tempDir, rootFolderName);
+        const tempExtractDir = path.join(this.tempDir, `extract-${Date.now()}`);
+        await fs.ensureDir(tempExtractDir);
+
+        zip.extractAllTo(tempExtractDir, true);
+        const extractedRoot = path.join(tempExtractDir, rootFolderName);
+
+        // Проверяем что корневая папка существует
+        if (!fs.existsSync(extractedRoot)) {
+          throw new Error(`Корневая папка ${rootFolderName} не найдена после распаковки`);
+        }
 
         // Копируем содержимое в целевую директорию
         await fs.copy(extractedRoot, destDir, { overwrite: true });
-        await fs.remove(extractedRoot);
+        await fs.remove(tempExtractDir);
       } else {
         // Архив без корневой папки - извлекаем напрямую
         console.log(`[ARCHIVE] Извлечение напрямую в директорию`);
         zip.extractAllTo(destDir, true);
       }
 
+      // Проверяем что содержимое успешно распаковано
+      const extractedFiles = await fs.readdir(destDir);
+      console.log(`[ARCHIVE] Распаковано файлов/папок: ${extractedFiles.length}`);
+
+      if (extractedFiles.length === 0) {
+        throw new Error('После распаковки директория пуста');
+      }
+
       onProgress({ stage: 'Архив распакован', percent: 90 });
-      console.log(`[ARCHIVE] ✓ ZIP распакован`);
+      console.log(`[ARCHIVE] ✓ ZIP распакован успешно`);
 
     } catch (error) {
+      console.error(`[ARCHIVE] Ошибка распаковки ZIP:`, error);
       throw new Error(`Ошибка распаковки ZIP: ${error.message}`);
     }
   }

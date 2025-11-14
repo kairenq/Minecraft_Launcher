@@ -326,6 +326,8 @@ class MinecraftLauncher {
         assets_index_name: versionData.assetIndex.id,
         auth_uuid: uuid,
         auth_access_token: uuid, // В offline режиме используем UUID как токен
+        clientid: '0', // Offline режим - нет OAuth client ID
+        auth_xuid: '0', // Offline режим - нет Xbox User ID
         user_type: 'legacy',
         version_type: versionData.type,
         natives_directory: nativesDir,
@@ -377,6 +379,29 @@ class MinecraftLauncher {
         for (const arg of versionData.arguments.game) {
           if (typeof arg === 'string') {
             gameArgs.push(this.replaceVariables(arg, variables));
+          } else if (arg.rules) {
+            // Проверка правил для game аргументов (некоторые аргументы условные)
+            let allowed = false;
+            for (const rule of arg.rules) {
+              if (rule.action === 'allow') {
+                // Проверяем features если они есть
+                if (rule.features) {
+                  // Пропускаем аргументы которые требуют специфичные features
+                  // (например, is_demo_user, has_custom_resolution)
+                  continue;
+                }
+                if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                  allowed = true;
+                }
+              }
+            }
+            if (allowed && arg.value) {
+              if (Array.isArray(arg.value)) {
+                arg.value.forEach(v => gameArgs.push(this.replaceVariables(v, variables)));
+              } else {
+                gameArgs.push(this.replaceVariables(arg.value, variables));
+              }
+            }
           }
         }
       } else if (versionData.minecraftArguments) {

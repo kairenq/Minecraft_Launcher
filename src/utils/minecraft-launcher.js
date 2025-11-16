@@ -680,12 +680,65 @@ class MinecraftLauncher {
           }
         } else {
           console.warn(`⚠️  Файл ${argsFileName} не найден: ${argsFilePath}`);
-          console.warn(`   Forge 1.17+ требует этот файл для запуска!`);
-          console.warn(`   Создаю минимальные аргументы для запуска...`);
+          console.warn(`   Пытаемся скачать...`);
           logStream.write(`[FORGE] ✗ File NOT found: ${argsFilePath}\n`);
-          logStream.write(`[FORGE] Creating fallback configuration...\n`);
+          logStream.write(`[FORGE] Attempting to download...\n`);
 
-          // Строим module path вручную для критичных библиотек Forge 1.17+
+          let downloadSuccessful = false;
+
+          try {
+            const axios = require('axios');
+            const argsUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${forgeFullVersion}/${argsFileName}`;
+            console.log(`[FORGE] Скачивание с: ${argsUrl}`);
+            logStream.write(`[FORGE] Downloading from: ${argsUrl}\n`);
+
+            const response = await axios.get(argsUrl, { responseType: 'text', timeout: 10000 });
+
+            // Создаём директорию если не существует
+            await fs.ensureDir(path.dirname(argsFilePath));
+            await fs.writeFile(argsFilePath, response.data, 'utf8');
+
+            console.log(`✓ ${argsFileName} успешно скачан!`);
+            logStream.write(`[FORGE] ✓ Downloaded successfully!\n`);
+
+            // Теперь парсим скачанный файл
+            const forgeArgsContent = response.data;
+            console.log(`✓ Содержимое ${argsFileName}:`);
+            console.log(forgeArgsContent.substring(0, 500));
+            logStream.write(`[FORGE] Content (first 500 chars):\n${forgeArgsContent.substring(0, 500)}\n`);
+
+            const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
+            console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments`);
+            logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
+
+            forgeArgsParsed.forEach((arg, idx) => {
+              let processedArg = arg;
+              if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                const relativePath = arg.replace(/^libraries[\/\\]/, '');
+                const normalizedPath = relativePath.split('/').join(path.sep);
+                processedArg = path.join(this.librariesDir, normalizedPath);
+                if (idx < 5) { // Логируем только первые 5 для экономии места
+                  logStream.write(`[FORGE] Arg[${idx}] converted: ${arg} -> ${processedArg}\n`);
+                }
+              }
+              jvmArgs.push(processedArg);
+            });
+
+            console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из скачанного ${argsFileName}`);
+            logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from downloaded file\n`);
+            downloadSuccessful = true;
+
+          } catch (downloadErr) {
+            console.error(`❌ Не удалось скачать ${argsFileName}: ${downloadErr.message}`);
+            logStream.write(`[FORGE] ✗ Download failed: ${downloadErr.message}\n`);
+          }
+
+          // Если скачивание не удалось - используем fallback
+          if (!downloadSuccessful) {
+            console.warn(`   Создаю минимальные аргументы для запуска...`);
+            logStream.write(`[FORGE] Creating fallback configuration...\n`);
+
+            // Строим module path вручную для критичных библиотек Forge 1.17+
           const forgeModuleLibs = [
             'cpw/mods/bootstraplauncher',
             'cpw/mods/securejarhandler',
@@ -744,7 +797,8 @@ class MinecraftLauncher {
 
           console.log(`✓ Fallback конфигурация для Forge 1.17+ создана`);
           logStream.write(`[FORGE] ✓ Fallback configuration created\n`);
-        }
+          } // end if (!downloadSuccessful)
+        } // end else (file not found)
       } else {
         logStream.write(`[FORGE_CHECK] NOT Forge - skipping Forge configuration\n`);
       }

@@ -523,13 +523,22 @@ class MinecraftLauncher {
       let finalLibraries = uniqueLibraries;
       if (versionId.includes('forge')) {
         const modulePathLibs = [
+          // FML библиотеки (КРИТИЧНО!)
+          'fmlloader',
+          'fmlcore',
+          'javafmllanguage',
+          'lowcodelanguage',
+          'mclanguage',
+          // Bootstrap и вспомогательные
           'bootstraplauncher',
           'securejarhandler',
+          // ASM
           'asm-9.3.jar',
           'asm-commons',
           'asm-tree',
           'asm-util',
           'asm-analysis',
+          // Forge SPI
           'forgespi'
         ];
 
@@ -740,13 +749,22 @@ class MinecraftLauncher {
 
             // Строим module path вручную для критичных библиотек Forge 1.17+
           const forgeModuleLibs = [
+            // КРИТИЧЕСКИ ВАЖНО: fmlloader предоставляет BootstrapLaunchConsumer!
+            'net/minecraftforge/fmlloader',
+            'net/minecraftforge/fmlcore',
+            'net/minecraftforge/javafmllanguage',
+            'net/minecraftforge/lowcodelanguage',
+            'net/minecraftforge/mclanguage',
+            // Bootstrap и вспомогательные
             'cpw/mods/bootstraplauncher',
             'cpw/mods/securejarhandler',
+            // ASM для трансформации байткода
             'org/ow2/asm/asm',
             'org/ow2/asm/asm-commons',
             'org/ow2/asm/asm-tree',
             'org/ow2/asm/asm-util',
             'org/ow2/asm/asm-analysis',
+            // Forge SPI
             'net/minecraftforge/forgespi'
           ];
 

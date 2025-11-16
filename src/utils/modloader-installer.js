@@ -407,15 +407,48 @@ class ModLoaderInstaller {
         name: `net.minecraftforge:forge:${fullVersion}:universal`,
         url: 'https://maven.minecraftforge.net/'
       },
-      // Критически важные библиотеки для Forge 1.17+ (модульная система)
+
+      // === КРИТИЧЕСКИ ВАЖНЫЕ БИБЛИОТЕКИ ДЛЯ FORGE 1.17+ ===
+
+      // FML Loader - ГЛАВНАЯ библиотека Forge (предоставляет BootstrapLaunchConsumer!)
+      {
+        name: 'net.minecraftforge:fmlloader:1.18.2-40.3.0',
+        url: 'https://maven.minecraftforge.net/'
+      },
+
+      // FML Core - ядро Forge Mod Loader
+      {
+        name: 'net.minecraftforge:fmlcore:1.18.2-40.3.0',
+        url: 'https://maven.minecraftforge.net/'
+      },
+
+      // Language Providers - для загрузки модов
+      {
+        name: 'net.minecraftforge:javafmllanguage:1.18.2-40.3.0',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'net.minecraftforge:lowcodelanguage:1.18.2-40.3.0',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'net.minecraftforge:mclanguage:1.18.2-40.3.0',
+        url: 'https://maven.minecraftforge.net/'
+      },
+
+      // Bootstrap Launcher - точка входа
       {
         name: 'cpw.mods:bootstraplauncher:1.1.2',
         url: 'https://maven.minecraftforge.net/'
       },
+
+      // Secure Jar Handler - для работы с модульными JAR
       {
         name: 'cpw.mods:securejarhandler:2.1.4',
         url: 'https://maven.minecraftforge.net/'
       },
+
+      // ASM - для трансформации байткода
       {
         name: 'org.ow2.asm:asm:9.3',
         url: 'https://maven.minecraftforge.net/'
@@ -436,6 +469,8 @@ class ModLoaderInstaller {
         name: 'org.ow2.asm:asm-analysis:9.3',
         url: 'https://maven.minecraftforge.net/'
       },
+
+      // Forge SPI - Service Provider Interface
       {
         name: 'net.minecraftforge:forgespi:6.0.0',
         url: 'https://maven.minecraftforge.net/'

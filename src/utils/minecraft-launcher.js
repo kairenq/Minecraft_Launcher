@@ -554,7 +554,8 @@ class MinecraftLauncher {
       console.log(`Всего JVM arguments в JSON: ${versionData.arguments && versionData.arguments.jvm ? versionData.arguments.jvm.length : 0}`);
 
       // Для Forge 1.17+: загружаем аргументы из win_args.txt/unix_args.txt
-      if (modLoader === 'forge' && versionId.includes('forge')) {
+      // Проверяем только versionId, т.к. modLoader может не передаваться
+      if (versionId.includes('forge')) {
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt

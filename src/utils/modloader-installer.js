@@ -395,8 +395,52 @@ class ModLoaderInstaller {
    */
   async createForgeManifest(minecraftVersion, forgeVersion) {
     console.log('[FORGE] Создаём базовый манифест...');
+    console.warn('[FORGE] ⚠️  ВНИМАНИЕ: Использование базового манифеста может не работать для Forge 1.17+');
+    console.warn('[FORGE]    Рекомендуется удалить версию и переустановить для скачивания полного манифеста');
 
     const fullVersion = `${minecraftVersion}-${forgeVersion}`;
+
+    // Для Forge 1.17+ нужны дополнительные библиотеки для модульной системы
+    const libraries = [
+      // Основной Forge JAR
+      {
+        name: `net.minecraftforge:forge:${fullVersion}:universal`,
+        url: 'https://maven.minecraftforge.net/'
+      },
+      // Критически важные библиотеки для Forge 1.17+ (модульная система)
+      {
+        name: 'cpw.mods:bootstraplauncher:1.1.2',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'cpw.mods:securejarhandler:2.1.4',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'org.ow2.asm:asm:9.3',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'org.ow2.asm:asm-commons:9.3',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'org.ow2.asm:asm-tree:9.3',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'org.ow2.asm:asm-util:9.3',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'org.ow2.asm:asm-analysis:9.3',
+        url: 'https://maven.minecraftforge.net/'
+      },
+      {
+        name: 'net.minecraftforge:forgespi:6.0.0',
+        url: 'https://maven.minecraftforge.net/'
+      }
+    ];
 
     return {
       id: `${minecraftVersion}-forge-${forgeVersion}`,
@@ -411,30 +455,7 @@ class ModLoaderInstaller {
         ],
         jvm: []
       },
-      libraries: [
-        {
-          name: `net.minecraftforge:forge:${fullVersion}`,
-          url: 'https://maven.minecraftforge.net/',
-          downloads: {
-            artifact: {
-              path: `net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-client.jar`,
-              url: `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-client.jar`,
-              sha1: null
-            }
-          }
-        },
-        {
-          name: `net.minecraftforge:forge:${fullVersion}:universal`,
-          url: 'https://maven.minecraftforge.net/',
-          downloads: {
-            artifact: {
-              path: `net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-universal.jar`,
-              url: `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-universal.jar`,
-              sha1: null
-            }
-          }
-        }
-      ]
+      libraries: libraries
     };
   }
 

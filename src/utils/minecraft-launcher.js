@@ -106,12 +106,13 @@ class MinecraftLauncher {
 
       console.log('\n=== ЗАПУСК MINECRAFT ===');
       console.log('Версия:', version);
-      console.log('Модлоадер:', modLoader || 'vanilla');
+      console.log('Модлоадер:', modLoader || 'не указан (undefined)');
       if (modLoaderVersion) console.log('Версия модлоадера:', modLoaderVersion);
       console.log('Пользователь:', username);
       console.log('Память (RAM):', memory, 'MB');
       console.log('Java путь:', javaPath);
       console.log('Директория игры:', gameDir);
+      console.log('DEBUG: modLoader type:', typeof modLoader, ', value:', modLoader);
 
       // Проверка существования Java
       if (!javaPath || !fs.existsSync(javaPath)) {
@@ -155,7 +156,13 @@ class MinecraftLauncher {
         } else {
           throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
         }
+      } else if (!modLoader && version.includes('forge')) {
+        // Если modLoader не указан, но version содержит 'forge' - автоопределение
+        console.log('⚠️  modLoader не указан, но версия содержит "forge" - автоопределение');
+        versionId = version;
       }
+
+      console.log('DEBUG: Финальный versionId:', versionId);
 
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
@@ -555,17 +562,21 @@ class MinecraftLauncher {
 
       // Для Forge 1.17+: загружаем аргументы из win_args.txt/unix_args.txt
       // Проверяем только versionId, т.к. modLoader может не передаваться
+      console.log(`\nDEBUG: Проверка Forge - versionId.includes('forge'): ${versionId.includes('forge')}`);
+
       if (versionId.includes('forge')) {
+        console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
         // Из versionId (например "1.18.2-forge-40.3.0") извлекаем "1.18.2-40.3.0"
         // Убираем "-forge-" между версией майнкрафта и версией forge
         const forgeFullVersion = versionId.replace(/-forge-/, '-');
+        console.log(`>>> FORGE: Ожидаемая версия: ${forgeFullVersion}`);
 
         const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
 
-        console.log(`\n>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
+        console.log(`>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
 
         if (fs.existsSync(argsFilePath)) {
           try {

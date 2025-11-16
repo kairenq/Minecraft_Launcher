@@ -101,10 +101,14 @@ class ModLoaderInstaller {
         return limit(async () => {
           if (lib.url && lib.name) {
             const parts = lib.name.split(':');
+            if (parts.length < 3) {
+              console.warn(`[FABRIC] Неверный формат библиотеки: ${lib.name}`);
+              return;
+            }
             const [group, artifact, version] = parts;
             const groupPath = group.replace(/\./g, '/');
             const libPath = `${groupPath}/${artifact}/${version}/${artifact}-${version}.jar`;
-            const fullPath = path.join(this.librariesDir, libPath);
+            const fullPath = path.join(this.librariesDir, groupPath.replace(/\//g, path.sep), artifact, version, `${artifact}-${version}.jar`);
 
             if (!fs.existsSync(fullPath)) {
               const url = `${lib.url}${libPath}`;
@@ -265,6 +269,10 @@ class ModLoaderInstaller {
             } else if (lib.name) {
               // Создаём artifact вручную
               const parts = lib.name.split(':');
+              if (parts.length < 3) {
+                console.warn(`[FORGE] Неверный формат библиотеки: ${lib.name}`);
+                return;
+              }
               const [group, name, version] = parts;
               const groupPath = group.replace(/\./g, '/');
               const jarName = `${name}-${version}.jar`;
@@ -281,7 +289,9 @@ class ModLoaderInstaller {
 
             if (!artifact) return;
 
-            const fullPath = path.join(this.librariesDir, artifact.path);
+            // Конвертируем Unix-style путь в platform-specific
+            const normalizedPath = artifact.path.split('/').join(path.sep);
+            const fullPath = path.join(this.librariesDir, normalizedPath);
 
             if (!fs.existsSync(fullPath)) {
               await fs.ensureDir(path.dirname(fullPath));

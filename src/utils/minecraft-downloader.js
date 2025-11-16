@@ -381,7 +381,9 @@ class MinecraftDownloader {
       // Фильтруем библиотеки, которые нужно скачать или перезагрузить
       const libsToDownload = [];
       for (const { artifact, name } of librariesToDownload) {
-        const libPath = path.join(this.librariesDir, artifact.path);
+        // Конвертируем Unix-style путь в platform-specific
+        const normalizedPath = artifact.path.split('/').join(path.sep);
+        const libPath = path.join(this.librariesDir, normalizedPath);
         const isOptional = optionalLibraries.some(lib => name.toLowerCase().includes(lib));
 
         if (!fs.existsSync(libPath)) {
@@ -410,7 +412,9 @@ class MinecraftDownloader {
 
         const downloadTasks = libsToDownload.map(({ artifact, name, reason }) => {
           return limit(async () => {
-            const libPath = path.join(this.librariesDir, artifact.path);
+            // Конвертируем Unix-style путь в platform-specific
+            const normalizedPath = artifact.path.split('/').join(path.sep);
+            const libPath = path.join(this.librariesDir, normalizedPath);
             try {
               await this.downloadFile(artifact.url, libPath);
 

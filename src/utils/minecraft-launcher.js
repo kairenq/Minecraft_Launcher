@@ -45,7 +45,9 @@ class MinecraftLauncher {
 
         // Способ 1: Есть downloads.artifact (стандарт Mojang)
         if (lib.downloads && lib.downloads.artifact) {
-          libPath = path.join(this.librariesDir, lib.downloads.artifact.path);
+          // Конвертируем Unix-style путь в platform-specific
+          const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
+          libPath = path.join(this.librariesDir, normalizedPath);
         }
         // Способ 2: Только name (Forge/Fabric библиотеки)
         else if (lib.name) {

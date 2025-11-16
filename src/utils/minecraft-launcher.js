@@ -580,10 +580,15 @@ class MinecraftLauncher {
             // Добавляем Forge аргументы ПЕРЕД базовыми JVM args
             forgeArgsParsed.forEach(arg => {
               // Заменяем относительные пути на абсолютные
+              let processedArg = arg;
               if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
-                arg = path.join(this.librariesDir, '..', arg);
+                // Убираем 'libraries/' или 'libraries\' из начала и заменяем на полный путь
+                const relativePath = arg.replace(/^libraries[\/\\]/, '');
+                // Конвертируем пути с forward slashes в platform-specific
+                const normalizedPath = relativePath.split('/').join(path.sep);
+                processedArg = path.join(this.librariesDir, normalizedPath);
               }
-              jvmArgs.push(arg);
+              jvmArgs.push(processedArg);
             });
 
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);

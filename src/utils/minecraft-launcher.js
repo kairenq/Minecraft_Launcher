@@ -163,13 +163,18 @@ class MinecraftLauncher {
       }
 
       console.log('DEBUG: Финальный versionId:', versionId);
+      logStream.write(`\n[LAUNCH] Final versionId: ${versionId}\n`);
+      logStream.write(`[LAUNCH] modLoader: ${modLoader}\n`);
+      logStream.write(`[LAUNCH] version: ${version}\n`);
 
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
+      logStream.write(`[LAUNCH] Version JSON path: ${versionJsonPath}\n`);
 
       if (!fs.existsSync(versionJsonPath)) {
         const error = `Файл версии не найден: ${versionJsonPath}.\nПереустановите сборку.`;
         console.error(error);
+        logStream.write(`[ERROR] ${error}\n`);
         throw new Error(error);
       }
 
@@ -602,8 +607,13 @@ class MinecraftLauncher {
       // Проверяем только versionId, т.к. modLoader может не передаваться
       console.log(`\nDEBUG: Проверка Forge - versionId.includes('forge'): ${versionId.includes('forge')}`);
 
+      console.log(`\n[DEBUG] Проверка Forge: versionId.includes('forge') = ${versionId.includes('forge')}`);
+      logStream.write(`\n[FORGE_CHECK] versionId: "${versionId}"\n`);
+      logStream.write(`[FORGE_CHECK] Contains 'forge': ${versionId.includes('forge')}\n`);
+
       if (versionId.includes('forge')) {
         console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
+        logStream.write('\n=== FORGE 1.17+ MODE ===\n');
 
         // КРИТИЧНО: Для Forge 1.17+ ВСЕГДА добавляем эти аргументы
         // Они открывают внутренние модули Java для bootstraplauncher
@@ -616,32 +626,39 @@ class MinecraftLauncher {
 
         essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
         console.log(`✓ Добавлено ${essentialForgeArgs.length} обязательных Forge аргументов`);
+        logStream.write(`[FORGE] Added ${essentialForgeArgs.length} essential JVM args\n`);
 
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
+        logStream.write(`[FORGE] Args file: ${argsFileName}\n`);
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
         // Из versionId (например "1.18.2-forge-40.3.0") извлекаем "1.18.2-40.3.0"
         // Убираем "-forge-" между версией майнкрафта и версией forge
         const forgeFullVersion = versionId.replace(/-forge-/, '-');
         console.log(`>>> FORGE: Ожидаемая версия: ${forgeFullVersion}`);
+        logStream.write(`[FORGE] Expected version: ${forgeFullVersion}\n`);
 
         const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
 
         console.log(`>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
+        logStream.write(`[FORGE] Searching for: ${argsFilePath}\n`);
 
         if (fs.existsSync(argsFilePath)) {
           try {
+            logStream.write(`[FORGE] ✓ File exists!\n`);
             const forgeArgsContent = await fs.readFile(argsFilePath, 'utf8');
             console.log(`✓ Найден ${argsFileName}, содержимое:`);
             console.log(forgeArgsContent.substring(0, 500));
+            logStream.write(`[FORGE] Content (first 500 chars):\n${forgeArgsContent.substring(0, 500)}\n`);
 
             // Парсим аргументы (они разделены пробелами, но пути в module path - через ; или :)
             const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
 
             console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments из ${argsFileName}`);
+            logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
 
             // Добавляем Forge аргументы ПЕРЕД базовыми JVM args
-            forgeArgsParsed.forEach(arg => {
+            forgeArgsParsed.forEach((arg, idx) => {
               // Заменяем относительные пути на абсолютные
               let processedArg = arg;
               if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
@@ -650,18 +667,23 @@ class MinecraftLauncher {
                 // Конвертируем пути с forward slashes в platform-specific
                 const normalizedPath = relativePath.split('/').join(path.sep);
                 processedArg = path.join(this.librariesDir, normalizedPath);
+                logStream.write(`[FORGE] Arg[${idx}] converted: ${arg} -> ${processedArg}\n`);
               }
               jvmArgs.push(processedArg);
             });
 
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);
+            logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
+            logStream.write(`[FORGE] ✗ Error reading file: ${err.message}\n`);
           }
         } else {
           console.warn(`⚠️  Файл ${argsFileName} не найден: ${argsFilePath}`);
           console.warn(`   Forge 1.17+ требует этот файл для запуска!`);
           console.warn(`   Создаю минимальные аргументы для запуска...`);
+          logStream.write(`[FORGE] ✗ File NOT found: ${argsFilePath}\n`);
+          logStream.write(`[FORGE] Creating fallback configuration...\n`);
 
           // Строим module path вручную для критичных библиотек Forge 1.17+
           const forgeModuleLibs = [
@@ -702,19 +724,29 @@ class MinecraftLauncher {
             jvmArgs.push('-p');
             jvmArgs.push(modulePaths.join(separator));
             console.log(`✓ Построен module path: ${modulePaths.length} библиотек`);
+            logStream.write(`[FORGE] ✓ Built module path: ${modulePaths.length} libraries\n`);
+            modulePaths.forEach((p, idx) => {
+              logStream.write(`[FORGE]   [${idx}] ${p}\n`);
+            });
           } else {
             console.error(`❌ Не найдены библиотеки для module path! Forge может не запуститься.`);
+            logStream.write(`[FORGE] ✗ ERROR: No libraries found for module path!\n`);
           }
 
           // Добавляем --add-modules для активации всех модулей
           jvmArgs.push('--add-modules', 'ALL-MODULE-PATH');
+          logStream.write(`[FORGE] Added --add-modules ALL-MODULE-PATH\n`);
 
           // Добавляем legacyClassPath для остальных библиотек
           // (будет добавлено позже после формирования полного classpath)
           console.log(`⚠️  legacyClassPath будет добавлен автоматически через переменные`);
+          logStream.write(`[FORGE] legacyClassPath will be added later\n`);
 
           console.log(`✓ Fallback конфигурация для Forge 1.17+ создана`);
+          logStream.write(`[FORGE] ✓ Fallback configuration created\n`);
         }
+      } else {
+        logStream.write(`[FORGE_CHECK] NOT Forge - skipping Forge configuration\n`);
       }
 
       // Аргументы из версии (если есть)
@@ -838,10 +870,13 @@ class MinecraftLauncher {
       // separator уже определён выше на строке 244!
       // ВАЖНО: Используем finalLibraries (уже без модульных библиотек для Forge)
       const classpathFinal = finalLibraries.join(separator);
+      logStream.write(`[CLASSPATH] Building final classpath from ${finalLibraries.length} libraries\n`);
 
       // Для Forge 1.17+: добавляем legacyClassPath если его ещё нет
       // КРИТИЧНО: Исключаем библиотеки которые уже в module path!
       if (versionId.includes('forge') && !jvmArgs.some(arg => arg.includes('legacyClassPath'))) {
+        logStream.write(`[FORGE] Adding legacyClassPath for Forge...\n`);
+
         // Список библиотек которые НЕ должны быть в legacyClassPath (они в module path)
         const modulePathLibs = [
           'bootstraplauncher',
@@ -859,7 +894,7 @@ class MinecraftLauncher {
         const legacyClassPath = finalLibraries.join(separator);
         jvmArgs.push(`-DlegacyClassPath=${legacyClassPath}`);
         console.log(`✓ Добавлен -DlegacyClassPath для Forge (${finalLibraries.length} библиотек, ${legacyClassPath.length} символов)`);
-        logStream.write(`[INFO] legacyClassPath: ${finalLibraries.length} libraries\n`);
+        logStream.write(`[INFO] legacyClassPath: ${finalLibraries.length} libraries, ${legacyClassPath.length} chars\n`);
       }
 
       console.log(`Classpath: ${finalLibraries.length} JAR файлов`);

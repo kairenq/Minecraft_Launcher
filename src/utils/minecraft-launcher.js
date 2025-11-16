@@ -513,10 +513,39 @@ class MinecraftLauncher {
         logStream.write(`[INFO] Removed ${duplicates} duplicates from classpath\n`);
       }
 
-      const separator = process.platform === 'win32' ? ';' : ':';
-      const classpath = uniqueLibraries.join(separator);
+      // Для Forge 1.17+: убираем модульные библиотеки из classpath
+      // Они должны быть ТОЛЬКО в module path, НЕ в classpath!
+      let finalLibraries = uniqueLibraries;
+      if (versionId.includes('forge')) {
+        const modulePathLibs = [
+          'bootstraplauncher',
+          'securejarhandler',
+          'asm-9.3.jar',
+          'asm-commons',
+          'asm-tree',
+          'asm-util',
+          'asm-analysis',
+          'forgespi'
+        ];
 
-      console.log(`✓ Финальный classpath: ${uniqueLibraries.length} JAR файлов (без natives и дубликатов)`);
+        finalLibraries = uniqueLibraries.filter(lib => {
+          const libName = path.basename(lib);
+          const isModulePath = modulePathLibs.some(moduleName => libName.includes(moduleName));
+          if (isModulePath) {
+            console.log(`[DEBUG] Исключено из classpath (будет в module path): ${libName}`);
+            logStream.write(`[FILTER] Excluded from classpath (module path): ${libName}\n`);
+          }
+          return !isModulePath;
+        });
+
+        console.log(`✓ Убрано ${uniqueLibraries.length - finalLibraries.length} модульных библиотек из classpath`);
+        logStream.write(`[INFO] Removed ${uniqueLibraries.length - finalLibraries.length} module libs from classpath\n`);
+      }
+
+      const separator = process.platform === 'win32' ? ';' : ':';
+      const classpath = finalLibraries.join(separator);
+
+      console.log(`✓ Финальный classpath: ${finalLibraries.length} JAR файлов (без natives, дубликатов и модульных библиотек)`);
 
       // Логируем финальную команду
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');

@@ -836,7 +836,8 @@ class MinecraftLauncher {
       logStream.write('\n=== ПОДГОТОВКА ЗАПУСКА ===\n');
 
       // separator уже определён выше на строке 244!
-      const classpathFinal = uniqueLibraries.join(separator);
+      // ВАЖНО: Используем finalLibraries (уже без модульных библиотек для Forge)
+      const classpathFinal = finalLibraries.join(separator);
 
       // Для Forge 1.17+: добавляем legacyClassPath если его ещё нет
       // КРИТИЧНО: Исключаем библиотеки которые уже в module path!
@@ -853,26 +854,17 @@ class MinecraftLauncher {
           'forgespi'
         ];
 
-        // Фильтруем classpath - убираем библиотеки module path
-        const legacyClassPathLibs = uniqueLibraries.filter(lib => {
-          const libName = path.basename(lib);
-          const isModulePath = modulePathLibs.some(moduleName => libName.includes(moduleName));
-          if (isModulePath) {
-            console.log(`[DEBUG] Исключено из legacyClassPath (уже в module path): ${libName}`);
-            logStream.write(`[FILTER] Excluded from legacyClassPath: ${libName}\n`);
-          }
-          return !isModulePath;
-        });
-
-        const legacyClassPath = legacyClassPathLibs.join(separator);
+        // ВАЖНО: finalLibraries уже без модульных библиотек!
+        // legacyClassPath должен совпадать с основным classpath
+        const legacyClassPath = finalLibraries.join(separator);
         jvmArgs.push(`-DlegacyClassPath=${legacyClassPath}`);
-        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${legacyClassPathLibs.length} библиотек, ${legacyClassPath.length} символов)`);
-        logStream.write(`[INFO] legacyClassPath: ${legacyClassPathLibs.length} libraries\n`);
+        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${finalLibraries.length} библиотек, ${legacyClassPath.length} символов)`);
+        logStream.write(`[INFO] legacyClassPath: ${finalLibraries.length} libraries\n`);
       }
 
-      console.log(`Classpath: ${uniqueLibraries.length} JAR файлов`);
+      console.log(`Classpath: ${finalLibraries.length} JAR файлов`);
       console.log(`Длина classpath: ${classpathFinal.length} символов`);
-      logStream.write(`[CLASSPATH] ${uniqueLibraries.length} JARs, ${classpathFinal.length} chars\n`);
+      logStream.write(`[CLASSPATH] ${finalLibraries.length} JARs, ${classpathFinal.length} chars\n`);
       const jvmArgsNoCp = jvmArgs.filter((arg, i) => {
         if (arg === '-cp') return false;
         if (i > 0 && jvmArgs[i-1] === '-cp') return false;
@@ -892,7 +884,7 @@ class MinecraftLauncher {
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
       console.log('Метод: Прямая передача через spawn()');
       console.log('JVM аргументов:', jvmArgsNoCp.length);
-      console.log('Classpath entries:', uniqueLibraries.length);
+      console.log('Classpath entries:', finalLibraries.length);
       console.log('Main class:', mainClass);
       console.log('Game аргументов:', gameArgs.length);
       console.log('RAM выделено:', memory, 'MB');
@@ -901,12 +893,12 @@ class MinecraftLauncher {
       // Записываем полную команду запуска в лог
       logStream.write('\n=== ИСПОЛЬЗУЕТСЯ ПРЯМОЙ ЗАПУСК (spawn) ===\n');
       logStream.write(`Main class: ${mainClass}\n`);
-      logStream.write(`Classpath entries: ${uniqueLibraries.length}\n`);
+      logStream.write(`Classpath entries: ${finalLibraries.length}\n`);
       logStream.write(`Classpath length: ${classpathFinal.length} chars\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgsNoCp.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
-      logStream.write(`\n[CLASSPATH] ${uniqueLibraries.length} JARs:\n`);
-      uniqueLibraries.forEach((jar, i) => {
+      logStream.write(`\n[CLASSPATH] ${finalLibraries.length} JARs:\n`);
+      finalLibraries.forEach((jar, i) => {
         logStream.write(`  [${i}] ${path.basename(jar)}\n`);
       });
       logStream.write('\nGAME ARGS:\n');
@@ -927,7 +919,7 @@ echo.
 echo Working directory: ${gameDir}
 echo Java: ${javaPath}
 echo Main class: ${mainClass}
-echo Classpath JARs: ${uniqueLibraries.length}
+echo Classpath JARs: ${finalLibraries.length}
 echo.
 echo Press ENTER to start Minecraft...
 pause >nul

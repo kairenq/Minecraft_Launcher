@@ -566,6 +566,19 @@ class MinecraftLauncher {
 
       if (versionId.includes('forge')) {
         console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
+
+        // КРИТИЧНО: Для Forge 1.17+ ВСЕГДА добавляем эти аргументы
+        // Они открывают внутренние модули Java для bootstraplauncher
+        const essentialForgeArgs = [
+          '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
+          '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler',
+          '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
+          '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming'
+        ];
+
+        essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
+        console.log(`✓ Добавлено ${essentialForgeArgs.length} обязательных Forge аргументов`);
+
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
@@ -610,6 +623,59 @@ class MinecraftLauncher {
         } else {
           console.warn(`⚠️  Файл ${argsFileName} не найден: ${argsFilePath}`);
           console.warn(`   Forge 1.17+ требует этот файл для запуска!`);
+          console.warn(`   Создаю минимальные аргументы для запуска...`);
+
+          // Строим module path вручную для критичных библиотек Forge 1.17+
+          const forgeModuleLibs = [
+            'cpw/mods/bootstraplauncher',
+            'cpw/mods/securejarhandler',
+            'org/ow2/asm/asm',
+            'org/ow2/asm/asm-commons',
+            'org/ow2/asm/asm-tree',
+            'org/ow2/asm/asm-util',
+            'org/ow2/asm/asm-analysis',
+            'net/minecraftforge/forgespi'
+          ];
+
+          const modulePaths = [];
+          for (const lib of forgeModuleLibs) {
+            const libDir = path.join(this.librariesDir, lib.split('/').join(path.sep));
+            if (fs.existsSync(libDir)) {
+              // Находим JAR файл в директории (может быть любая версия)
+              const files = fs.readdirSync(libDir);
+              for (const file of files) {
+                const filePath = path.join(libDir, file);
+                const stat = fs.statSync(filePath);
+                if (stat.isDirectory()) {
+                  // Ищем JAR в поддиректориях версий
+                  const versionFiles = fs.readdirSync(filePath);
+                  for (const vf of versionFiles) {
+                    if (vf.endsWith('.jar')) {
+                      modulePaths.push(path.join(filePath, vf));
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          if (modulePaths.length > 0) {
+            const separator = process.platform === 'win32' ? ';' : ':';
+            jvmArgs.push('-p');
+            jvmArgs.push(modulePaths.join(separator));
+            console.log(`✓ Построен module path: ${modulePaths.length} библиотек`);
+          } else {
+            console.error(`❌ Не найдены библиотеки для module path! Forge может не запуститься.`);
+          }
+
+          // Добавляем --add-modules для активации всех модулей
+          jvmArgs.push('--add-modules', 'ALL-MODULE-PATH');
+
+          // Добавляем legacyClassPath для остальных библиотек
+          // (будет добавлено позже после формирования полного classpath)
+          console.log(`⚠️  legacyClassPath будет добавлен автоматически через переменные`);
+
+          console.log(`✓ Fallback конфигурация для Forge 1.17+ создана`);
         }
       }
 
@@ -733,6 +799,12 @@ class MinecraftLauncher {
 
       // separator уже определён выше на строке 244!
       const classpathFinal = filteredLibraries.join(separator);
+
+      // Для Forge 1.17+: добавляем legacyClassPath если его ещё нет
+      if (versionId.includes('forge') && !jvmArgs.some(arg => arg.includes('legacyClassPath'))) {
+        jvmArgs.push(`-DlegacyClassPath=${classpathFinal}`);
+        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${classpathFinal.length} символов)`);
+      }
 
       console.log(`Classpath: ${filteredLibraries.length} JAR файлов`);
       console.log(`Длина classpath: ${classpathFinal.length} символов`);

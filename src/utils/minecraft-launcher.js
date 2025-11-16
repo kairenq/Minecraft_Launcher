@@ -104,6 +104,22 @@ class MinecraftLauncher {
     try {
       const { version, username, memory, javaPath, gameDir, modLoader, modLoaderVersion } = options;
 
+      // Создаём лог-файл СРАЗУ, чтобы логировать все операции
+      const logsDir = path.join(gameDir, 'logs');
+      await fs.ensureDir(logsDir);
+      const logFile = path.join(logsDir, 'launcher.log');
+      const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+      // Записываем заголовок в лог
+      logStream.write('\n' + '='.repeat(80) + '\n');
+      logStream.write(`ЗАПУСК: ${new Date().toISOString()}\n`);
+      logStream.write(`Версия: ${version}\n`);
+      logStream.write(`Пользователь: ${username}\n`);
+      logStream.write(`RAM: ${memory} MB\n`);
+      logStream.write(`Java: ${javaPath}\n`);
+      logStream.write(`GameDir: ${gameDir}\n`);
+      logStream.write('='.repeat(80) + '\n\n');
+
       console.log('\n=== ЗАПУСК MINECRAFT ===');
       console.log('Версия:', version);
       console.log('Модлоадер:', modLoader || 'не указан (undefined)');
@@ -282,22 +298,6 @@ class MinecraftLauncher {
       await fs.ensureDir(gameDir);
       const nativesDir = path.join(gameDir, 'natives');
       await fs.ensureDir(nativesDir);
-
-      // Создаем файл для логов (делаем это СРАЗУ, чтобы можно было логировать все операции)
-      const logsDir = path.join(gameDir, 'logs');
-      await fs.ensureDir(logsDir);
-      const logFile = path.join(logsDir, 'launcher.log');
-      const logStream = fs.createWriteStream(logFile, { flags: 'a' });
-
-      // Записываем заголовок в лог
-      logStream.write('\n' + '='.repeat(80) + '\n');
-      logStream.write(`ЗАПУСК: ${new Date().toISOString()}\n`);
-      logStream.write(`Версия: ${version}\n`);
-      logStream.write(`Пользователь: ${username}\n`);
-      logStream.write(`RAM: ${memory} MB\n`);
-      logStream.write(`Java: ${javaPath}\n`);
-      logStream.write(`GameDir: ${gameDir}\n`);
-      logStream.write('='.repeat(80) + '\n\n');
 
       // Извлечение нативных библиотек
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');

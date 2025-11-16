@@ -559,7 +559,8 @@ class MinecraftLauncher {
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
         // Из versionId (например "1.18.2-forge-40.3.0") извлекаем "1.18.2-40.3.0"
-        const forgeFullVersion = versionId.replace('forge-', '').replace('-', '-forge-');
+        // Убираем "-forge-" между версией майнкрафта и версией forge
+        const forgeFullVersion = versionId.replace(/-forge-/, '-');
 
         const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
 

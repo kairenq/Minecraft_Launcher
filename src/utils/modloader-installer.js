@@ -348,6 +348,33 @@ class ModLoaderInstaller {
 
       await Promise.all(downloadTasks);
 
+      // Скачиваем win_args.txt и unix_args.txt для Forge 1.17+ (если они есть)
+      onProgress({ stage: 'Загрузка Forge аргументов', percent: 95 });
+      const forgeArgsDir = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', fullForgeVersion);
+      await fs.ensureDir(forgeArgsDir);
+
+      const argsFiles = ['win_args.txt', 'unix_args.txt'];
+      for (const argsFile of argsFiles) {
+        const argsUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullForgeVersion}/${argsFile}`;
+        const argsPath = path.join(forgeArgsDir, argsFile);
+
+        try {
+          console.log(`[FORGE] Скачивание ${argsFile}...`);
+          const response = await axios({
+            url: argsUrl,
+            method: 'GET',
+            responseType: 'text',
+            ...this.axiosConfig
+          });
+
+          await fs.writeFile(argsPath, response.data, 'utf8');
+          console.log(`[FORGE] ✓ ${argsFile} скачан`);
+        } catch (err) {
+          console.warn(`[FORGE] ⚠️  Не удалось скачать ${argsFile}: ${err.message}`);
+          console.warn(`[FORGE]    Это нормально для старых версий Forge (до 1.17)`);
+        }
+      }
+
       onProgress({ stage: 'Forge установлен', percent: 100 });
       console.log('[FORGE] ✓ Установка завершена');
 

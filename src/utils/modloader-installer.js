@@ -273,9 +273,15 @@ class ModLoaderInstaller {
                 console.warn(`[FORGE] Неверный формат библиотеки: ${lib.name}`);
                 return;
               }
-              const [group, name, version] = parts;
+
+              const [group, name, version, classifier] = parts;
               const groupPath = group.replace(/\./g, '/');
-              const jarName = `${name}-${version}.jar`;
+
+              // Если есть classifier (4-я часть), добавляем его к имени JAR
+              const jarName = classifier
+                ? `${name}-${version}-${classifier}.jar`
+                : `${name}-${version}.jar`;
+
               const libPath = `${groupPath}/${name}/${version}/${jarName}`;
 
               const baseUrl = lib.url || 'https://libraries.minecraft.net/';
@@ -285,6 +291,8 @@ class ModLoaderInstaller {
                 sha1: null
               };
               libName = lib.name;
+
+              console.log(`[FORGE] Парсинг библиотеки: ${lib.name} -> ${jarName}`);
             }
 
             if (!artifact) return;

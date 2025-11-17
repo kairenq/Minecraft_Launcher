@@ -70,6 +70,7 @@ class MinecraftDownloader {
 
   async downloadFile(url, dest, onProgress, retries = 3) {
     for (let attempt = 0; attempt < retries; attempt++) {
+      let writer = null;
       try {
         console.log(`[DOWNLOAD] ${url}`);
         console.log(`[DEST] ${dest}`);
@@ -98,7 +99,7 @@ class MinecraftDownloader {
 
         console.log(`[SIZE] ${totalLength} bytes (${(totalLength / 1024 / 1024).toFixed(2)} MB)`);
 
-        const writer = fs.createWriteStream(dest);
+        writer = fs.createWriteStream(dest);
 
         response.data.on('data', (chunk) => {
           downloadedLength += chunk.length;
@@ -126,6 +127,12 @@ class MinecraftDownloader {
         // Успешно скачано
         return;
       } catch (error) {
+        // Закрываем writer перед очисткой
+        if (writer && !writer.destroyed) {
+          writer.destroy();
+          await new Promise(resolve => setTimeout(resolve, 100)); // Даём время на закрытие
+        }
+
         const isSSLError = error.message && (
           error.message.includes('BAD_DECRYPT') ||
           error.message.includes('CERT_') ||
@@ -133,16 +140,28 @@ class MinecraftDownloader {
           error.message.includes('certificate')
         );
 
+        const isPermissionError = error.code === 'EPERM' ||
+          error.code === 'EACCES' ||
+          (error.message && error.message.includes('operation not permitted'));
+
         if (isSSLError) {
           console.error(`[SSL ERROR] Обнаружена SSL ошибка - возможно антивирус вмешивается`);
+        }
+
+        if (isPermissionError) {
+          console.error(`[PERMISSION ERROR] Антивирус блокирует доступ к файлу`);
         }
 
         console.error(`[ERROR] Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
 
         // Удаляем битый файл если он был создан
         if (fs.existsSync(dest)) {
-          await fs.remove(dest);
-          console.log(`[CLEANUP] Удален битый файл: ${dest}`);
+          try {
+            await fs.remove(dest);
+            console.log(`[CLEANUP] Удален битый файл: ${dest}`);
+          } catch (cleanupErr) {
+            console.warn(`[CLEANUP WARNING] Не удалось удалить файл (возможно антивирус держит): ${cleanupErr.message}`);
+          }
         }
 
         // Если это последняя попытка - выбрасываем ошибку
@@ -156,11 +175,22 @@ class MinecraftDownloader {
             errorMsg += '\n3. Добавьте лаунчер в исключения антивируса';
           }
 
+          if (isPermissionError) {
+            errorMsg += '\n\n⚠️  АНТИВИРУС БЛОКИРУЕТ ФАЙЛЫ: Попробуйте:';
+            errorMsg += '\n1. Временно отключите антивирус (рекомендуется)';
+            errorMsg += '\n2. Добавьте папку лаунчера в исключения антивируса';
+            errorMsg += '\n3. Отключите "Защиту от программ-вымогателей" в антивирусе';
+            errorMsg += '\n4. Запустите лаунчер от имени администратора';
+          }
+
           throw new Error(errorMsg);
         }
 
-        // Ждём перед следующей попыткой (экспоненциальный backoff)
-        const delay = Math.pow(2, attempt) * 1000;
+        // Ждём перед следующей попыткой
+        // Для EPERM ошибок ждём дольше - антивирусу нужно время на сканирование
+        const delay = isPermissionError
+          ? Math.pow(2, attempt) * 2000  // 2s, 4s, 8s для EPERM
+          : Math.pow(2, attempt) * 1000; // 1s, 2s, 4s для остальных
         console.log(`[RETRY] Ожидание ${delay}ms перед следующей попыткой...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }

@@ -399,103 +399,82 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Создание базового манифеста Forge если не удалось скачать
+   * Извлечение version.json из официального Forge installer
    */
   async createForgeManifest(minecraftVersion, forgeVersion) {
-    console.log('[FORGE] Создаём базовый манифест...');
-    console.warn('[FORGE] ⚠️  ВНИМАНИЕ: Использование базового манифеста может не работать для Forge 1.17+');
-    console.warn('[FORGE]    Рекомендуется удалить версию и переустановить для скачивания полного манифеста');
+    console.log('[FORGE] Скачиваем официальный installer для извлечения version.json...');
 
     const fullVersion = `${minecraftVersion}-${forgeVersion}`;
+    const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-installer.jar`;
 
-    // Для Forge 1.17+ нужны дополнительные библиотеки для модульной системы
-    // ВАЖНО: Для Forge 1.17+ НЕ нужен отдельный forge JAR!
-    // Все функции распределены по FML библиотекам
-    const libraries = [
-      // === КРИТИЧЕСКИ ВАЖНЫЕ БИБЛИОТЕКИ ДЛЯ FORGE 1.17+ ===
+    try {
+      // Скачиваем installer JAR во временную директорию
+      const tempDir = path.join(require('os').tmpdir(), 'forge-installer-' + Date.now());
+      await fs.ensureDir(tempDir);
+      const installerPath = path.join(tempDir, 'installer.jar');
 
-      // FML Loader - ГЛАВНАЯ библиотека Forge (предоставляет BootstrapLaunchConsumer!)
-      {
-        name: `net.minecraftforge:fmlloader:${fullVersion}`,
-        url: 'https://maven.minecraftforge.net/'
-      },
+      console.log(`[FORGE] Загрузка installer: ${installerUrl}`);
+      const response = await axios({
+        url: installerUrl,
+        method: 'GET',
+        responseType: 'stream',
+        ...this.axiosConfig
+      });
 
-      // FML Core - ядро Forge Mod Loader
-      {
-        name: `net.minecraftforge:fmlcore:${fullVersion}`,
-        url: 'https://maven.minecraftforge.net/'
-      },
+      const writer = fs.createWriteStream(installerPath);
+      await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+        response.data.pipe(writer);
+      });
 
-      // Language Providers - для загрузки модов
-      {
-        name: `net.minecraftforge:javafmllanguage:${fullVersion}`,
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: `net.minecraftforge:lowcodelanguage:${fullVersion}`,
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: `net.minecraftforge:mclanguage:${fullVersion}`,
-        url: 'https://maven.minecraftforge.net/'
-      },
+      console.log('[FORGE] ✓ Installer скачан, извлекаем version.json...');
 
-      // Bootstrap Launcher - точка входа
-      {
-        name: 'cpw.mods:bootstraplauncher:1.1.2',
-        url: 'https://maven.minecraftforge.net/'
-      },
+      // Извлекаем version.json из installer JAR
+      const AdmZip = require('adm-zip');
+      const zip = new AdmZip(installerPath);
+      const versionJsonEntry = zip.getEntry('version.json');
 
-      // Secure Jar Handler - для работы с модульными JAR
-      {
-        name: 'cpw.mods:securejarhandler:2.1.4',
-        url: 'https://maven.minecraftforge.net/'
-      },
-
-      // ASM - для трансформации байткода
-      {
-        name: 'org.ow2.asm:asm:9.3',
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: 'org.ow2.asm:asm-commons:9.3',
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: 'org.ow2.asm:asm-tree:9.3',
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: 'org.ow2.asm:asm-util:9.3',
-        url: 'https://maven.minecraftforge.net/'
-      },
-      {
-        name: 'org.ow2.asm:asm-analysis:9.3',
-        url: 'https://maven.minecraftforge.net/'
-      },
-
-      // Forge SPI - Service Provider Interface
-      {
-        name: 'net.minecraftforge:forgespi:6.0.0',
-        url: 'https://maven.minecraftforge.net/'
+      if (!versionJsonEntry) {
+        throw new Error('version.json не найден в installer');
       }
-    ];
 
-    return {
-      id: `${minecraftVersion}-forge-${forgeVersion}`,
-      inheritsFrom: minecraftVersion,
-      releaseTime: new Date().toISOString(),
-      time: new Date().toISOString(),
-      type: 'release',
-      mainClass: 'cpw.mods.bootstraplauncher.BootstrapLauncher',
-      arguments: {
-        game: [
-          '--launchTarget', 'forgeclient'
-        ],
-        jvm: []
-      },
-      libraries: libraries
-    };
+      const versionJson = JSON.parse(versionJsonEntry.getData().toString('utf8'));
+      console.log(`[FORGE] ✓ version.json извлечён (${versionJson.libraries?.length || 0} библиотек)`);
+
+      // Извлекаем win_args.txt и unix_args.txt если они есть
+      const winArgsEntry = zip.getEntry('data/win_args.txt');
+      const unixArgsEntry = zip.getEntry('data/unix_args.txt');
+
+      if (winArgsEntry || unixArgsEntry) {
+        const forgeArgsDir = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', fullVersion);
+        await fs.ensureDir(forgeArgsDir);
+
+        if (winArgsEntry) {
+          const winArgsPath = path.join(forgeArgsDir, 'win_args.txt');
+          await fs.writeFile(winArgsPath, winArgsEntry.getData());
+          console.log('[FORGE] ✓ win_args.txt извлечён');
+        }
+
+        if (unixArgsEntry) {
+          const unixArgsPath = path.join(forgeArgsDir, 'unix_args.txt');
+          await fs.writeFile(unixArgsPath, unixArgsEntry.getData());
+          console.log('[FORGE] ✓ unix_args.txt извлечён');
+        }
+      }
+
+      // Очищаем временную директорию
+      await fs.remove(tempDir);
+
+      // Корректируем ID версии если нужно
+      versionJson.id = `${minecraftVersion}-forge-${forgeVersion}`;
+
+      return versionJson;
+
+    } catch (error) {
+      console.error('[FORGE] ❌ Не удалось извлечь version.json из installer:', error.message);
+      throw new Error(`Не удалось получить официальный манифест Forge: ${error.message}`);
+    }
   }
 
   /**

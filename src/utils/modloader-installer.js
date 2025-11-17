@@ -409,13 +409,9 @@ class ModLoaderInstaller {
     const fullVersion = `${minecraftVersion}-${forgeVersion}`;
 
     // Для Forge 1.17+ нужны дополнительные библиотеки для модульной системы
+    // ВАЖНО: Для Forge 1.17+ НЕ нужен отдельный forge JAR!
+    // Все функции распределены по FML библиотекам
     const libraries = [
-      // Основной Forge JAR - для 1.17+ используем client вместо universal
-      {
-        name: `net.minecraftforge:forge:${fullVersion}:client`,
-        url: 'https://maven.minecraftforge.net/'
-      },
-
       // === КРИТИЧЕСКИ ВАЖНЫЕ БИБЛИОТЕКИ ДЛЯ FORGE 1.17+ ===
 
       // FML Loader - ГЛАВНАЯ библиотека Forge (предоставляет BootstrapLaunchConsumer!)

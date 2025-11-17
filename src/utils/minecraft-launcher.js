@@ -749,8 +749,6 @@ class MinecraftLauncher {
 
             // Строим module path вручную для критичных библиотек Forge 1.17+
           const forgeModuleLibs = [
-            // Основной Forge JAR
-            'net/minecraftforge/forge',
             // КРИТИЧЕСКИ ВАЖНО: fmlloader предоставляет BootstrapLaunchConsumer!
             'net/minecraftforge/fmlloader',
             'net/minecraftforge/fmlcore',

@@ -412,27 +412,27 @@ class ModLoaderInstaller {
 
       // FML Loader - ГЛАВНАЯ библиотека Forge (предоставляет BootstrapLaunchConsumer!)
       {
-        name: 'net.minecraftforge:fmlloader:1.18.2-40.3.0',
+        name: `net.minecraftforge:fmlloader:${fullVersion}`,
         url: 'https://maven.minecraftforge.net/'
       },
 
       // FML Core - ядро Forge Mod Loader
       {
-        name: 'net.minecraftforge:fmlcore:1.18.2-40.3.0',
+        name: `net.minecraftforge:fmlcore:${fullVersion}`,
         url: 'https://maven.minecraftforge.net/'
       },
 
       // Language Providers - для загрузки модов
       {
-        name: 'net.minecraftforge:javafmllanguage:1.18.2-40.3.0',
+        name: `net.minecraftforge:javafmllanguage:${fullVersion}`,
         url: 'https://maven.minecraftforge.net/'
       },
       {
-        name: 'net.minecraftforge:lowcodelanguage:1.18.2-40.3.0',
+        name: `net.minecraftforge:lowcodelanguage:${fullVersion}`,
         url: 'https://maven.minecraftforge.net/'
       },
       {
-        name: 'net.minecraftforge:mclanguage:1.18.2-40.3.0',
+        name: `net.minecraftforge:mclanguage:${fullVersion}`,
         url: 'https://maven.minecraftforge.net/'
       },
 

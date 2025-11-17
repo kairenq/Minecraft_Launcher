@@ -402,9 +402,9 @@ class ModLoaderInstaller {
 
     // Для Forge 1.17+ нужны дополнительные библиотеки для модульной системы
     const libraries = [
-      // Основной Forge JAR
+      // Основной Forge JAR - для 1.17+ используем client вместо universal
       {
-        name: `net.minecraftforge:forge:${fullVersion}:universal`,
+        name: `net.minecraftforge:forge:${fullVersion}:client`,
         url: 'https://maven.minecraftforge.net/'
       },
 

@@ -76,13 +76,21 @@ class MinecraftDownloader {
 
         await fs.ensureDir(path.dirname(dest));
 
+        // ВАЖНО: Для resources.download.minecraft.net отключаем SSL проверку
+        // если возникает ошибка (антивирусы делают MITM)
+        const isMinecraftResource = url.includes('resources.download.minecraft.net');
+        const httpsAgent = isMinecraftResource && attempt > 0
+          ? new (require('https').Agent)({ rejectUnauthorized: false })
+          : undefined;
+
         const response = await axios({
           url: url,
           method: 'GET',
           responseType: 'stream',
           timeout: 60000, // 60 секунд таймаут
           maxRedirects: 5, // Разрешаем редиректы
-          validateStatus: (status) => status >= 200 && status < 300 // 2xx статусы
+          validateStatus: (status) => status >= 200 && status < 300, // 2xx статусы
+          httpsAgent: httpsAgent
         });
 
         const totalLength = parseInt(response.headers['content-length'], 10);
@@ -118,6 +126,17 @@ class MinecraftDownloader {
         // Успешно скачано
         return;
       } catch (error) {
+        const isSSLError = error.message && (
+          error.message.includes('BAD_DECRYPT') ||
+          error.message.includes('CERT_') ||
+          error.message.includes('SSL') ||
+          error.message.includes('certificate')
+        );
+
+        if (isSSLError) {
+          console.error(`[SSL ERROR] Обнаружена SSL ошибка - возможно антивирус вмешивается`);
+        }
+
         console.error(`[ERROR] Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
 
         // Удаляем битый файл если он был создан
@@ -128,7 +147,16 @@ class MinecraftDownloader {
 
         // Если это последняя попытка - выбрасываем ошибку
         if (attempt === retries - 1) {
-          throw new Error(`Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`);
+          let errorMsg = `Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`;
+
+          if (isSSLError) {
+            errorMsg += '\n\n⚠️  SSL ОШИБКА: Попробуйте:';
+            errorMsg += '\n1. Временно отключите антивирус';
+            errorMsg += '\n2. Отключите SSL проверку в антивирусе';
+            errorMsg += '\n3. Добавьте лаунчер в исключения антивируса';
+          }
+
+          throw new Error(errorMsg);
         }
 
         // Ждём перед следующей попыткой (экспоненциальный backoff)

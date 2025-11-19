@@ -624,8 +624,8 @@ class MinecraftLauncher {
         console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
         logStream.write('\n=== FORGE 1.17+ MODE ===\n');
 
-        // КРИТИЧНО: Для Forge 1.17+ ВСЕГДА добавляем эти аргументы
-        // Они открывают внутренние модули Java для bootstraplauncher
+        // FALLBACK аргументы - используются только если win_args.txt не найден
+        // win_args.txt уже содержит все необходимые аргументы
         const essentialForgeArgs = [
           '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
           '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler',
@@ -633,9 +633,9 @@ class MinecraftLauncher {
           '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming'
         ];
 
-        essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
-        console.log(`✓ Добавлено ${essentialForgeArgs.length} обязательных Forge аргументов`);
-        logStream.write(`[FORGE] Added ${essentialForgeArgs.length} essential JVM args\n`);
+        // НЕ добавляем здесь - добавим как fallback только если win_args.txt не найден
+        // essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
+        logStream.write(`[FORGE] Essential args prepared for fallback (${essentialForgeArgs.length} args)\n`);
 
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
         logStream.write(`[FORGE] Args file: ${argsFileName}\n`);
@@ -666,8 +666,36 @@ class MinecraftLauncher {
             console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments из ${argsFileName}`);
             logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
 
+            // win_args.txt содержит: <jvm_args> <main_class> <program_args>
+            // Нам нужны только JVM args (начинаются с - или являются путями для -p)
+            // Когда встречаем main class (cpw.mods... или net.minecraftforge...), останавливаемся
+            let hitMainClass = false;
+            let prevWasFlag = false; // Предыдущий аргумент был флагом типа -p, нужен путь
+
             // Добавляем Forge аргументы ПЕРЕД базовыми JVM args
             forgeArgsParsed.forEach((arg, idx) => {
+              // Проверяем не дошли ли до main class или program args
+              if (hitMainClass) return;
+
+              // Main class обычно это полное имя класса (cpw.mods... или net.minecraftforge...)
+              if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at main class: ${arg}`);
+                logStream.write(`[FORGE] Stopped parsing at main class: ${arg}\n`);
+                return;
+              }
+
+              // Пропускаем program arguments (начинаются с -- но не являются JVM аргументами)
+              if (arg.startsWith('--') && !arg.startsWith('--add-') && !prevWasFlag) {
+                // Это program argument типа --launchTarget, --fml.forgeVersion
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at program arg: ${arg}`);
+                logStream.write(`[FORGE] Stopped parsing at program arg: ${arg}\n`);
+                return;
+              }
+
+              // Отслеживаем флаги которым нужно значение
+              prevWasFlag = (arg === '-p' || arg === '-cp' || arg === '-classpath');
               // Заменяем относительные пути на абсолютные
               let processedArg = arg;
 
@@ -676,7 +704,17 @@ class MinecraftLauncher {
                 // Функция для конвертации одного пути
                 const convertPath = (p) => {
                   if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
-                    const relativePath = p.replace(/^libraries[\/\\]/, '');
+                    let relativePath = p.replace(/^libraries[\/\\]/, '');
+
+                    // Заменяем server на client для путей Minecraft (для клиентского запуска)
+                    // net/minecraft/server/... -> net/minecraft/client/...
+                    // server-1.18.2-... -> client-1.18.2-...
+                    if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
+                      relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
+                      relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
+                      console.log(`[PATH] Converted server->client: ${p} -> libraries/${relativePath}`);
+                    }
+
                     const normalizedPath = relativePath.split('/').join(path.sep);
                     return path.join(this.librariesDir, normalizedPath);
                   }
@@ -755,14 +793,42 @@ class MinecraftLauncher {
             console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments`);
             logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
 
+            // win_args.txt содержит: <jvm_args> <main_class> <program_args>
+            let hitMainClass = false;
+            let prevWasFlag = false;
+
             forgeArgsParsed.forEach((arg, idx) => {
+              // Проверяем не дошли ли до main class или program args
+              if (hitMainClass) return;
+
+              if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at main class: ${arg}`);
+                return;
+              }
+
+              if (arg.startsWith('--') && !arg.startsWith('--add-') && !prevWasFlag) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at program arg: ${arg}`);
+                return;
+              }
+
+              prevWasFlag = (arg === '-p' || arg === '-cp' || arg === '-classpath');
               let processedArg = arg;
 
               // Проверяем содержит ли аргумент относительные пути libraries/
               if (arg.includes('libraries/') || arg.includes('libraries\\')) {
                 const convertPath = (p) => {
                   if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
-                    const relativePath = p.replace(/^libraries[\/\\]/, '');
+                    let relativePath = p.replace(/^libraries[\/\\]/, '');
+
+                    // Заменяем server на client для путей Minecraft (для клиентского запуска)
+                    if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
+                      relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
+                      relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
+                      console.log(`[PATH] Converted server->client: ${p} -> libraries/${relativePath}`);
+                    }
+
                     const normalizedPath = relativePath.split('/').join(path.sep);
                     return path.join(this.librariesDir, normalizedPath);
                   }
@@ -818,6 +884,11 @@ class MinecraftLauncher {
           if (!downloadSuccessful) {
             console.warn(`   Создаю минимальные аргументы для запуска...`);
             logStream.write(`[FORGE] Creating fallback configuration...\n`);
+
+            // Добавляем essential args как fallback
+            essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
+            console.log(`✓ Добавлено ${essentialForgeArgs.length} fallback Forge аргументов`);
+            logStream.write(`[FORGE] Added ${essentialForgeArgs.length} essential args as fallback\n`);
 
             // Строим module path вручную для критичных библиотек Forge 1.17+
           const forgeModuleLibs = [

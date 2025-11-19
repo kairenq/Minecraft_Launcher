@@ -70,11 +70,19 @@ class MinecraftDownloader {
 
   async downloadFile(url, dest, onProgress, retries = 3) {
     for (let attempt = 0; attempt < retries; attempt++) {
+      let writer = null;
       try {
         console.log(`[DOWNLOAD] ${url}`);
         console.log(`[DEST] ${dest}`);
 
         await fs.ensureDir(path.dirname(dest));
+
+        // ВАЖНО: Для resources.download.minecraft.net отключаем SSL проверку
+        // если возникает ошибка (антивирусы делают MITM)
+        const isMinecraftResource = url.includes('resources.download.minecraft.net');
+        const httpsAgent = isMinecraftResource && attempt > 0
+          ? new (require('https').Agent)({ rejectUnauthorized: false })
+          : undefined;
 
         const response = await axios({
           url: url,
@@ -82,7 +90,8 @@ class MinecraftDownloader {
           responseType: 'stream',
           timeout: 60000, // 60 секунд таймаут
           maxRedirects: 5, // Разрешаем редиректы
-          validateStatus: (status) => status >= 200 && status < 300 // 2xx статусы
+          validateStatus: (status) => status >= 200 && status < 300, // 2xx статусы
+          httpsAgent: httpsAgent
         });
 
         const totalLength = parseInt(response.headers['content-length'], 10);
@@ -90,7 +99,7 @@ class MinecraftDownloader {
 
         console.log(`[SIZE] ${totalLength} bytes (${(totalLength / 1024 / 1024).toFixed(2)} MB)`);
 
-        const writer = fs.createWriteStream(dest);
+        writer = fs.createWriteStream(dest);
 
         response.data.on('data', (chunk) => {
           downloadedLength += chunk.length;
@@ -118,21 +127,70 @@ class MinecraftDownloader {
         // Успешно скачано
         return;
       } catch (error) {
+        // Закрываем writer перед очисткой
+        if (writer && !writer.destroyed) {
+          writer.destroy();
+          await new Promise(resolve => setTimeout(resolve, 100)); // Даём время на закрытие
+        }
+
+        const isSSLError = error.message && (
+          error.message.includes('BAD_DECRYPT') ||
+          error.message.includes('CERT_') ||
+          error.message.includes('SSL') ||
+          error.message.includes('certificate')
+        );
+
+        const isPermissionError = error.code === 'EPERM' ||
+          error.code === 'EACCES' ||
+          (error.message && error.message.includes('operation not permitted'));
+
+        if (isSSLError) {
+          console.error(`[SSL ERROR] Обнаружена SSL ошибка - возможно антивирус вмешивается`);
+        }
+
+        if (isPermissionError) {
+          console.error(`[PERMISSION ERROR] Антивирус блокирует доступ к файлу`);
+        }
+
         console.error(`[ERROR] Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
 
         // Удаляем битый файл если он был создан
         if (fs.existsSync(dest)) {
-          await fs.remove(dest);
-          console.log(`[CLEANUP] Удален битый файл: ${dest}`);
+          try {
+            await fs.remove(dest);
+            console.log(`[CLEANUP] Удален битый файл: ${dest}`);
+          } catch (cleanupErr) {
+            console.warn(`[CLEANUP WARNING] Не удалось удалить файл (возможно антивирус держит): ${cleanupErr.message}`);
+          }
         }
 
         // Если это последняя попытка - выбрасываем ошибку
         if (attempt === retries - 1) {
-          throw new Error(`Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`);
+          let errorMsg = `Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`;
+
+          if (isSSLError) {
+            errorMsg += '\n\n⚠️  SSL ОШИБКА: Попробуйте:';
+            errorMsg += '\n1. Временно отключите антивирус';
+            errorMsg += '\n2. Отключите SSL проверку в антивирусе';
+            errorMsg += '\n3. Добавьте лаунчер в исключения антивируса';
+          }
+
+          if (isPermissionError) {
+            errorMsg += '\n\n⚠️  АНТИВИРУС БЛОКИРУЕТ ФАЙЛЫ: Попробуйте:';
+            errorMsg += '\n1. Временно отключите антивирус (рекомендуется)';
+            errorMsg += '\n2. Добавьте папку лаунчера в исключения антивируса';
+            errorMsg += '\n3. Отключите "Защиту от программ-вымогателей" в антивирусе';
+            errorMsg += '\n4. Запустите лаунчер от имени администратора';
+          }
+
+          throw new Error(errorMsg);
         }
 
-        // Ждём перед следующей попыткой (экспоненциальный backoff)
-        const delay = Math.pow(2, attempt) * 1000;
+        // Ждём перед следующей попыткой
+        // Для EPERM ошибок ждём дольше - антивирусу нужно время на сканирование
+        const delay = isPermissionError
+          ? Math.pow(2, attempt) * 2000  // 2s, 4s, 8s для EPERM
+          : Math.pow(2, attempt) * 1000; // 1s, 2s, 4s для остальных
         console.log(`[RETRY] Ожидание ${delay}ms перед следующей попыткой...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -381,7 +439,9 @@ class MinecraftDownloader {
       // Фильтруем библиотеки, которые нужно скачать или перезагрузить
       const libsToDownload = [];
       for (const { artifact, name } of librariesToDownload) {
-        const libPath = path.join(this.librariesDir, artifact.path);
+        // Конвертируем Unix-style путь в platform-specific
+        const normalizedPath = artifact.path.split('/').join(path.sep);
+        const libPath = path.join(this.librariesDir, normalizedPath);
         const isOptional = optionalLibraries.some(lib => name.toLowerCase().includes(lib));
 
         if (!fs.existsSync(libPath)) {
@@ -410,7 +470,9 @@ class MinecraftDownloader {
 
         const downloadTasks = libsToDownload.map(({ artifact, name, reason }) => {
           return limit(async () => {
-            const libPath = path.join(this.librariesDir, artifact.path);
+            // Конвертируем Unix-style путь в platform-specific
+            const normalizedPath = artifact.path.split('/').join(path.sep);
+            const libPath = path.join(this.librariesDir, normalizedPath);
             try {
               await this.downloadFile(artifact.url, libPath);
 

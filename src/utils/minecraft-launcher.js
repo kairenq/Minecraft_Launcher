@@ -670,27 +670,47 @@ class MinecraftLauncher {
             forgeArgsParsed.forEach((arg, idx) => {
               // Заменяем относительные пути на абсолютные
               let processedArg = arg;
-              if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
-                // Если аргумент содержит несколько путей (разделённых ; или :), обрабатываем каждый
-                if (arg.includes(';') || arg.includes(':')) {
-                  const separator = arg.includes(';') ? ';' : ':';
-                  const paths = arg.split(separator);
-                  const convertedPaths = paths.map(p => {
-                    if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
-                      const relativePath = p.replace(/^libraries[\/\\]/, '');
-                      const normalizedPath = relativePath.split('/').join(path.sep);
-                      return path.join(this.librariesDir, normalizedPath);
-                    }
-                    return p;
-                  });
-                  processedArg = convertedPaths.join(path.delimiter); // path.delimiter - это ; на Windows, : на Unix
+
+              // Проверяем содержит ли аргумент относительные пути libraries/
+              if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+                // Функция для конвертации одного пути
+                const convertPath = (p) => {
+                  if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
+                    const relativePath = p.replace(/^libraries[\/\\]/, '');
+                    const normalizedPath = relativePath.split('/').join(path.sep);
+                    return path.join(this.librariesDir, normalizedPath);
+                  }
+                  return p;
+                };
+
+                // Проверяем это -D параметр с путями (например -DlegacyClassPath=...)
+                if (arg.includes('=') && (arg.includes('libraries/') || arg.includes('libraries\\'))) {
+                  const eqIndex = arg.indexOf('=');
+                  const paramName = arg.substring(0, eqIndex + 1); // включая =
+                  const paramValue = arg.substring(eqIndex + 1);
+
+                  // Если значение содержит несколько путей
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
+                    const separator = paramValue.includes(';') ? ';' : ':';
+                    const paths = paramValue.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = paramName + convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = paramName + convertPath(paramValue);
+                  }
+                  logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}... -> ${processedArg.substring(0, 100)}...\n`);
+                }
+                // Обычный аргумент начинающийся с libraries/
+                else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                  if (arg.includes(';') || arg.includes(':')) {
+                    const separator = arg.includes(';') ? ';' : ':';
+                    const paths = arg.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = convertPath(arg);
+                  }
                   logStream.write(`[FORGE] Arg[${idx}] converted (multiple paths): ${arg.substring(0, 200)}... -> ${processedArg.substring(0, 200)}...\n`);
-                } else {
-                  // Одиночный путь
-                  const relativePath = arg.replace(/^libraries[\/\\]/, '');
-                  const normalizedPath = relativePath.split('/').join(path.sep);
-                  processedArg = path.join(this.librariesDir, normalizedPath);
-                  logStream.write(`[FORGE] Arg[${idx}] converted: ${arg} -> ${processedArg}\n`);
                 }
               }
               jvmArgs.push(processedArg);
@@ -737,30 +757,48 @@ class MinecraftLauncher {
 
             forgeArgsParsed.forEach((arg, idx) => {
               let processedArg = arg;
-              if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
-                // Если аргумент содержит несколько путей (разделённых ; или :), обрабатываем каждый
-                if (arg.includes(';') || arg.includes(':')) {
-                  const separator = arg.includes(';') ? ';' : ':';
-                  const paths = arg.split(separator);
-                  const convertedPaths = paths.map(p => {
-                    if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
-                      const relativePath = p.replace(/^libraries[\/\\]/, '');
-                      const normalizedPath = relativePath.split('/').join(path.sep);
-                      return path.join(this.librariesDir, normalizedPath);
-                    }
-                    return p;
-                  });
-                  processedArg = convertedPaths.join(path.delimiter);
-                  if (idx < 5) {
-                    logStream.write(`[FORGE] Arg[${idx}] converted (multiple paths): ${arg.substring(0, 200)}... -> ${processedArg.substring(0, 200)}...\n`);
+
+              // Проверяем содержит ли аргумент относительные пути libraries/
+              if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+                const convertPath = (p) => {
+                  if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
+                    const relativePath = p.replace(/^libraries[\/\\]/, '');
+                    const normalizedPath = relativePath.split('/').join(path.sep);
+                    return path.join(this.librariesDir, normalizedPath);
                   }
-                } else {
-                  // Одиночный путь
-                  const relativePath = arg.replace(/^libraries[\/\\]/, '');
-                  const normalizedPath = relativePath.split('/').join(path.sep);
-                  processedArg = path.join(this.librariesDir, normalizedPath);
+                  return p;
+                };
+
+                // -D параметр с путями
+                if (arg.includes('=') && (arg.includes('libraries/') || arg.includes('libraries\\'))) {
+                  const eqIndex = arg.indexOf('=');
+                  const paramName = arg.substring(0, eqIndex + 1);
+                  const paramValue = arg.substring(eqIndex + 1);
+
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
+                    const separator = paramValue.includes(';') ? ';' : ':';
+                    const paths = paramValue.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = paramName + convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = paramName + convertPath(paramValue);
+                  }
                   if (idx < 5) {
-                    logStream.write(`[FORGE] Arg[${idx}] converted: ${arg} -> ${processedArg}\n`);
+                    logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}...\n`);
+                  }
+                }
+                // Обычный аргумент
+                else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                  if (arg.includes(';') || arg.includes(':')) {
+                    const separator = arg.includes(';') ? ';' : ':';
+                    const paths = arg.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = convertPath(arg);
+                  }
+                  if (idx < 5) {
+                    logStream.write(`[FORGE] Arg[${idx}] converted: ${arg.substring(0, 200)}...\n`);
                   }
                 }
               }

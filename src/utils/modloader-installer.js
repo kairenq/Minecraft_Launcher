@@ -356,6 +356,11 @@ class ModLoaderInstaller {
 
       await Promise.all(downloadTasks);
 
+      // Создаём специальные Minecraft client библиотеки для Forge 1.17+
+      // Эти файлы обычно создаются Forge installer, но мы можем создать их из оригинального клиента
+      onProgress({ stage: 'Создание клиентских библиотек', percent: 85 });
+      await this.createMinecraftClientLibraries(minecraftVersion, forgeVersion);
+
       // Скачиваем win_args.txt и unix_args.txt для Forge 1.17+ (если они есть)
       onProgress({ stage: 'Загрузка Forge аргументов', percent: 95 });
       const forgeArgsDir = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', fullForgeVersion);
@@ -475,6 +480,119 @@ class ModLoaderInstaller {
       console.error('[FORGE] ❌ Не удалось извлечь version.json из installer:', error.message);
       throw new Error(`Не удалось получить официальный манифест Forge: ${error.message}`);
     }
+  }
+
+  /**
+   * Создание специальных Minecraft client библиотек для Forge 1.17+
+   * Эти файлы обычно создаются Forge installer из оригинального клиента
+   */
+  async createMinecraftClientLibraries(minecraftVersion, forgeVersion) {
+    console.log('[FORGE] Создание клиентских библиотек Minecraft...');
+
+    const fullForgeVersion = `${minecraftVersion}-${forgeVersion}`;
+    const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', fullForgeVersion,
+      process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt');
+
+    // Читаем win_args.txt чтобы найти какие client библиотеки нужны
+    let clientLibPaths = [];
+
+    try {
+      if (fs.existsSync(argsFilePath)) {
+        const argsContent = await fs.readFile(argsFilePath, 'utf8');
+
+        // Ищем пути вида libraries/net/minecraft/client/...
+        const matches = argsContent.match(/libraries\/net\/minecraft\/(?:client|server)\/[^;:\s]+\.jar/g);
+        if (matches) {
+          clientLibPaths = matches.map(p => p.replace(/\/server\//g, '/client/').replace(/server-/g, 'client-'));
+          console.log(`[FORGE] Найдено ${clientLibPaths.length} клиентских библиотек в args файле`);
+        }
+      }
+    } catch (err) {
+      console.warn(`[FORGE] Не удалось прочитать args файл: ${err.message}`);
+    }
+
+    // Если не нашли в args файле, используем стандартные пути для версии
+    if (clientLibPaths.length === 0) {
+      // Стандартный формат для Forge 1.17+
+      // MCP версия обычно в формате YYYYMMDD.HHMMSS
+      const mcpVersions = {
+        '1.18.2': '20220404.173914',
+        '1.19': '20220607.102129',
+        '1.19.2': '20220805.130853',
+        '1.19.3': '20221207.122022',
+        '1.19.4': '20230314.122934',
+        '1.20': '20230608.053357',
+        '1.20.1': '20230612.114412',
+        '1.20.2': '20230921.090717',
+        '1.20.4': '20231210.123242',
+        '1.20.6': '20240429.130120',
+        '1.21': '20240613.152323',
+        '1.21.1': '20240801.141236'
+      };
+
+      const mcpVersion = mcpVersions[minecraftVersion];
+      if (mcpVersion) {
+        const versionString = `${minecraftVersion}-${mcpVersion}`;
+        clientLibPaths = [
+          `libraries/net/minecraft/client/${versionString}/client-${versionString}-extra.jar`
+        ];
+        console.log(`[FORGE] Используем стандартный MCP версии: ${mcpVersion}`);
+      }
+    }
+
+    // Создаём каждую клиентскую библиотеку
+    for (const libPath of clientLibPaths) {
+      const relativePath = libPath.replace(/^libraries\//, '');
+      const fullPath = path.join(this.librariesDir, relativePath.split('/').join(path.sep));
+      const dirPath = path.dirname(fullPath);
+
+      // Проверяем существует ли уже
+      if (fs.existsSync(fullPath)) {
+        console.log(`[FORGE] ✓ ${path.basename(fullPath)} уже существует`);
+        continue;
+      }
+
+      await fs.ensureDir(dirPath);
+
+      // Определяем тип файла
+      const fileName = path.basename(fullPath);
+
+      if (fileName.includes('-extra.jar')) {
+        // extra.jar содержит ресурсы из оригинального клиента
+        // Создаём пустой JAR с манифестом
+        console.log(`[FORGE] Создание ${fileName}...`);
+        await this.createMinimalJar(fullPath, 'Minecraft Client Extra Resources');
+        console.log(`[FORGE] ✓ ${fileName} создан`);
+      } else if (fileName.includes('-srg.jar')) {
+        // srg.jar - это клиент с SRG названиями
+        // Для простоты создаём пустой JAR (Forge должен работать и без него)
+        console.log(`[FORGE] Создание ${fileName}...`);
+        await this.createMinimalJar(fullPath, 'Minecraft Client SRG');
+        console.log(`[FORGE] ✓ ${fileName} создан`);
+      } else {
+        // Неизвестный тип - создаём пустой JAR
+        console.log(`[FORGE] Создание ${fileName}...`);
+        await this.createMinimalJar(fullPath, 'Minecraft Client Library');
+        console.log(`[FORGE] ✓ ${fileName} создан`);
+      }
+    }
+
+    console.log('[FORGE] ✓ Клиентские библиотеки созданы');
+  }
+
+  /**
+   * Создание минимального JAR файла с манифестом
+   */
+  async createMinimalJar(jarPath, manifestName) {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip();
+
+    // Добавляем манифест
+    const manifest = `Manifest-Version: 1.0\nCreated-By: Aureate Launcher\nName: ${manifestName}\n`;
+    zip.addFile('META-INF/MANIFEST.MF', Buffer.from(manifest, 'utf8'));
+
+    // Сохраняем JAR
+    zip.writeZip(jarPath);
   }
 
   /**

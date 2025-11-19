@@ -620,6 +620,10 @@ class MinecraftLauncher {
       logStream.write(`\n[FORGE_CHECK] versionId: "${versionId}"\n`);
       logStream.write(`[FORGE_CHECK] Contains 'forge': ${versionId.includes('forge')}\n`);
 
+      // Флаг для отслеживания успешной загрузки аргументов из win_args.txt
+      // Вынесен наружу чтобы использовать для пропуска arguments.jvm
+      let forgeArgsLoaded = false;
+
       if (versionId.includes('forge')) {
         console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
         logStream.write('\n=== FORGE 1.17+ MODE ===\n');
@@ -756,6 +760,7 @@ class MinecraftLauncher {
 
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);
             logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
+            forgeArgsLoaded = true; // Успешно загрузили из win_args.txt
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
             logStream.write(`[FORGE] ✗ Error reading file: ${err.message}\n`);
@@ -874,6 +879,7 @@ class MinecraftLauncher {
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из скачанного ${argsFileName}`);
             logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from downloaded file\n`);
             downloadSuccessful = true;
+            forgeArgsLoaded = true; // Успешно загрузили из скачанного файла
 
           } catch (downloadErr) {
             console.error(`❌ Не удалось скачать ${argsFileName}: ${downloadErr.message}`);
@@ -965,7 +971,8 @@ class MinecraftLauncher {
       }
 
       // Аргументы из версии (если есть)
-      if (versionData.arguments && versionData.arguments.jvm) {
+      // Пропускаем для Forge если уже загрузили из win_args.txt (чтобы избежать дублирования)
+      if (versionData.arguments && versionData.arguments.jvm && !forgeArgsLoaded) {
         let addedCount = 0;
         let skippedCount = 0;
 

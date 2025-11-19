@@ -284,7 +284,15 @@ class ModLoaderInstaller {
 
               const libPath = `${groupPath}/${name}/${version}/${jarName}`;
 
-              const baseUrl = lib.url || 'https://libraries.minecraft.net/';
+              // Определяем правильный базовый URL
+              // Для Forge/FML библиотек используем maven.minecraftforge.net
+              let baseUrl = lib.url || 'https://libraries.minecraft.net/';
+
+              // Если библиотека от minecraftforge - используем их Maven
+              if (group.includes('minecraftforge') || group.includes('cpw.mods')) {
+                baseUrl = 'https://maven.minecraftforge.net/';
+              }
+
               artifact = {
                 path: libPath,
                 url: `${baseUrl}${libPath}`,
@@ -292,7 +300,7 @@ class ModLoaderInstaller {
               };
               libName = lib.name;
 
-              console.log(`[FORGE] Парсинг библиотеки: ${lib.name} -> ${jarName}`);
+              console.log(`[FORGE] Парсинг библиотеки: ${lib.name} -> ${jarName} (URL: ${baseUrl})`);
             }
 
             if (!artifact) return;

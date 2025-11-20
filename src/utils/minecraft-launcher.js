@@ -128,6 +128,12 @@ class MinecraftLauncher {
     // Эти библиотеки являются частью внутренних модулей Forge и загружаются динамически
     const hardcodedCriticalLibs = [
       {
+        name: `net.minecraftforge:forge:${fullForgeVersion}:universal`,
+        artifact: 'forge',
+        group: 'net.minecraftforge',
+        classifier: 'universal'
+      },
+      {
         name: `net.minecraftforge:fmlcore:${fullForgeVersion}`,
         artifact: 'fmlcore',
         group: 'net.minecraftforge'
@@ -152,7 +158,9 @@ class MinecraftLauncher {
     // Проверяем жестко закодированные критичные библиотеки
     for (const lib of hardcodedCriticalLibs) {
       const groupPath = lib.group.replace(/\./g, path.sep);
-      const fileName = `${lib.artifact}-${fullForgeVersion}.jar`;
+      const fileName = lib.classifier
+        ? `${lib.artifact}-${fullForgeVersion}-${lib.classifier}.jar`
+        : `${lib.artifact}-${fullForgeVersion}.jar`;
       const libPath = path.join(this.librariesDir, groupPath, lib.artifact, fullForgeVersion, fileName);
 
       if (!fs.existsSync(libPath)) {
@@ -176,7 +184,9 @@ class MinecraftLauncher {
 
         // Строим URL для загрузки критичных библиотек Forge
         const groupPath = lib.group.replace(/\./g, '/');
-        const fileName = `${lib.artifact}-${fullVersion}.jar`;
+        const fileName = lib.classifier
+          ? `${lib.artifact}-${fullVersion}-${lib.classifier}.jar`
+          : `${lib.artifact}-${fullVersion}.jar`;
         const baseUrl = 'https://maven.minecraftforge.net/';
         const downloadUrl = `${baseUrl}${groupPath}/${lib.artifact}/${fullVersion}/${fileName}`;
 

@@ -104,41 +104,61 @@ class MinecraftLauncher {
     console.log('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===');
     logStream.write('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===\n');
 
-    // Критичные библиотеки Forge
-    const criticalLibNames = ['fmlcore', 'fmlloader', 'javafmllanguage', 'lowcodelanguage', 'mclanguage'];
     const axios = require('axios');
     const missingLibs = [];
 
-    // Проверяем каждую библиотеку из version JSON
-    for (const lib of versionData.libraries || []) {
-      if (!lib.name) continue;
+    // Извлекаем версию Forge из versionData.id (например, "1.18.2-forge-40.3.0")
+    const versionId = versionData.id || '';
+    const forgeMatch = versionId.match(/forge-(.+)/);
+    if (!forgeMatch) {
+      console.log('⚠️  Не удалось определить версию Forge из versionId');
+      logStream.write('[CHECK] Cannot determine Forge version\n\n');
+      return;
+    }
 
-      // Проверяем является ли библиотека критичной
-      const isCritical = criticalLibNames.some(critName => lib.name.includes(critName));
-      if (!isCritical) continue;
+    const forgeVersion = forgeMatch[1]; // например "40.3.0"
+    const mcVersionMatch = versionId.match(/^([0-9.]+)-/);
+    const mcVersion = mcVersionMatch ? mcVersionMatch[1] : '';
+    const fullForgeVersion = `${mcVersion}-${forgeVersion}`;
 
-      // Определяем путь к библиотеке
-      let libPath = null;
-      if (lib.downloads && lib.downloads.artifact) {
-        const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
-        libPath = path.join(this.librariesDir, normalizedPath);
-      } else if (lib.name) {
-        const parts = lib.name.split(':');
-        if (parts.length >= 3) {
-          const [group, artifact, version] = parts;
-          const groupPath = group.replace(/\./g, '/');
-          const fileName = `${artifact}-${version}.jar`;
-          libPath = path.join(this.librariesDir, groupPath.replace(/\//g, path.sep), artifact, version, fileName);
-        }
+    console.log(`[FORGE] Версия: ${fullForgeVersion}`);
+    logStream.write(`[FORGE] Version: ${fullForgeVersion}\n`);
+
+    // Жестко закодированные критичные библиотеки Forge (НЕ включены в version JSON!)
+    // Эти библиотеки являются частью внутренних модулей Forge и загружаются динамически
+    const hardcodedCriticalLibs = [
+      {
+        name: `net.minecraftforge:fmlcore:${fullForgeVersion}`,
+        artifact: 'fmlcore',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:javafmllanguage:${fullForgeVersion}`,
+        artifact: 'javafmllanguage',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:lowcodelanguage:${fullForgeVersion}`,
+        artifact: 'lowcodelanguage',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:mclanguage:${fullForgeVersion}`,
+        artifact: 'mclanguage',
+        group: 'net.minecraftforge'
       }
+    ];
 
-      if (!libPath) continue;
+    // Проверяем жестко закодированные критичные библиотеки
+    for (const lib of hardcodedCriticalLibs) {
+      const groupPath = lib.group.replace(/\./g, path.sep);
+      const fileName = `${lib.artifact}-${fullForgeVersion}.jar`;
+      const libPath = path.join(this.librariesDir, groupPath, lib.artifact, fullForgeVersion, fileName);
 
-      // Проверяем существование файла
       if (!fs.existsSync(libPath)) {
         console.log(`❌ Отсутствует критичная библиотека: ${lib.name}`);
         logStream.write(`[CRITICAL] Missing: ${lib.name}\n`);
-        missingLibs.push({ lib, libPath });
+        missingLibs.push({ lib, libPath, fullVersion: fullForgeVersion });
       } else {
         console.log(`✓ ${lib.name}`);
       }
@@ -150,31 +170,18 @@ class MinecraftLauncher {
       console.log('Автоматическая загрузка...\n');
       logStream.write(`\n[AUTO-REPAIR] Downloading ${missingLibs.length} missing critical libraries\n`);
 
-      for (const { lib, libPath } of missingLibs) {
+      for (const { lib, libPath, fullVersion } of missingLibs) {
         const libName = lib.name;
         console.log(`Загрузка: ${libName}...`);
 
-        // Определяем URL для загрузки
-        let downloadUrl = null;
-        if (lib.downloads && lib.downloads.artifact && lib.downloads.artifact.url) {
-          downloadUrl = lib.downloads.artifact.url;
-        } else {
-          // Строим URL вручную для Forge библиотек
-          const parts = lib.name.split(':');
-          if (parts.length >= 3) {
-            const [group, artifact, version] = parts;
-            const groupPath = group.replace(/\./g, '/');
-            const fileName = `${artifact}-${version}.jar`;
-            const baseUrl = 'https://maven.minecraftforge.net/';
-            downloadUrl = `${baseUrl}${groupPath}/${artifact}/${version}/${fileName}`;
-          }
-        }
+        // Строим URL для загрузки критичных библиотек Forge
+        const groupPath = lib.group.replace(/\./g, '/');
+        const fileName = `${lib.artifact}-${fullVersion}.jar`;
+        const baseUrl = 'https://maven.minecraftforge.net/';
+        const downloadUrl = `${baseUrl}${groupPath}/${lib.artifact}/${fullVersion}/${fileName}`;
 
-        if (!downloadUrl) {
-          console.error(`  ❌ Не удалось определить URL для ${libName}`);
-          logStream.write(`[AUTO-REPAIR] ERROR: Cannot determine URL for ${libName}\n`);
-          continue;
-        }
+        console.log(`  URL: ${downloadUrl}`);
+        logStream.write(`[AUTO-REPAIR] URL: ${downloadUrl}\n`);
 
         // Создаём директорию
         await fs.ensureDir(path.dirname(libPath));

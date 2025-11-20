@@ -68,41 +68,71 @@ class MinecraftDownloader {
     return response.data;
   }
 
-  async downloadFile(url, dest, onProgress, retries = 3) {
+  async downloadFile(url, dest, onProgress, retries = 5) {
     for (let attempt = 0; attempt < retries; attempt++) {
       let writer = null;
       try {
-        console.log(`[DOWNLOAD] ${url}`);
+        console.log(`[DOWNLOAD] ${url} (попытка ${attempt + 1}/${retries})`);
         console.log(`[DEST] ${dest}`);
 
         await fs.ensureDir(path.dirname(dest));
 
-        // ВАЖНО: Для resources.download.minecraft.net отключаем SSL проверку
-        // если возникает ошибка (антивирусы делают MITM)
+        // ВАЖНО: Для resources.download.minecraft.net используем специальные настройки
         const isMinecraftResource = url.includes('resources.download.minecraft.net');
-        const httpsAgent = isMinecraftResource && attempt > 0
-          ? new (require('https').Agent)({ rejectUnauthorized: false })
-          : undefined;
+        const isLargeFile = url.includes('.jar') || url.includes('.zip');
+
+        // Более длительные таймауты для проблемных серверов
+        let timeout;
+        if (isMinecraftResource) {
+          timeout = 300000; // 5 минут для resources.download.minecraft.net
+        } else if (isLargeFile) {
+          timeout = 180000; // 3 минуты для больших файлов
+        } else {
+          timeout = 60000; // 1 минута для остальных
+        }
+
+        const httpsAgent = new (require('https').Agent)({
+          rejectUnauthorized: false, // Отключаем SSL проверку для всех
+          keepAlive: true,
+          keepAliveMsecs: 30000,
+          timeout: timeout
+        });
+
+        console.log(`[CONFIG] Timeout: ${timeout}ms, Redirects: 10, SSL: disabled`);
 
         const response = await axios({
           url: url,
           method: 'GET',
           responseType: 'stream',
-          timeout: 60000, // 60 секунд таймаут
-          maxRedirects: 5, // Разрешаем редиректы
-          validateStatus: (status) => status >= 200 && status < 300, // 2xx статусы
-          httpsAgent: httpsAgent
+          timeout: timeout,
+          maxRedirects: 10,
+          validateStatus: (status) => status >= 200 && status < 300,
+          httpsAgent: httpsAgent,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
         });
 
         const totalLength = parseInt(response.headers['content-length'], 10);
         let downloadedLength = 0;
+        let lastProgressLog = Date.now();
 
         console.log(`[SIZE] ${totalLength} bytes (${(totalLength / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[START] Начало скачивания...`);
 
         writer = fs.createWriteStream(dest);
 
         response.data.on('data', (chunk) => {
           downloadedLength += chunk.length;
+
+          // Логируем прогресс каждые 5 секунд для больших файлов
+          const now = Date.now();
+          if (totalLength && now - lastProgressLog > 5000) {
+            const percent = ((downloadedLength / totalLength) * 100).toFixed(1);
+            console.log(`[PROGRESS] ${percent}% (${(downloadedLength / 1024 / 1024).toFixed(2)} MB / ${(totalLength / 1024 / 1024).toFixed(2)} MB)`);
+            lastProgressLog = now;
+          }
+
           if (onProgress && totalLength) {
             const progress = downloadedLength / totalLength;
             onProgress(progress);
@@ -152,7 +182,13 @@ class MinecraftDownloader {
           console.error(`[PERMISSION ERROR] Антивирус блокирует доступ к файлу`);
         }
 
+        const isTimeoutError = error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT' ||
+          (error.message && error.message.includes('timeout'));
+        const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' ||
+          error.code === 'ECONNRESET' || (error.message && error.message.includes('connect'));
+
         console.error(`[ERROR] Ошибка скачивания ${url} (попытка ${attempt + 1}/${retries}):`, error.message);
+        console.error(`[ERROR] Код ошибки:`, error.code || 'N/A');
 
         // Удаляем битый файл если он был создан
         if (fs.existsSync(dest)) {
@@ -167,6 +203,22 @@ class MinecraftDownloader {
         // Если это последняя попытка - выбрасываем ошибку
         if (attempt === retries - 1) {
           let errorMsg = `Не удалось скачать файл после ${retries} попыток: ${url}\nОшибка: ${error.message}`;
+
+          if (isTimeoutError) {
+            errorMsg += '\n\n⚠️  ПРЕВЫШЕНО ВРЕМЯ ОЖИДАНИЯ:';
+            errorMsg += '\n1. Проверьте скорость интернет-соединения';
+            errorMsg += '\n2. Попробуйте использовать VPN (серверы Mojang могут быть медленными)';
+            errorMsg += '\n3. Попробуйте позже - серверы Mojang могут быть перегружены';
+            errorMsg += '\n4. Отключите торренты и другие программы, использующие интернет';
+          }
+
+          if (isNetworkError) {
+            errorMsg += '\n\n⚠️  ОШИБКА СЕТИ:';
+            errorMsg += '\n1. Проверьте подключение к интернету';
+            errorMsg += '\n2. Попробуйте использовать VPN';
+            errorMsg += '\n3. Проверьте настройки firewall';
+            errorMsg += '\n4. Отключите proxy если используется';
+          }
 
           if (isSSLError) {
             errorMsg += '\n\n⚠️  SSL ОШИБКА: Попробуйте:';
@@ -186,12 +238,20 @@ class MinecraftDownloader {
           throw new Error(errorMsg);
         }
 
-        // Ждём перед следующей попыткой
-        // Для EPERM ошибок ждём дольше - антивирусу нужно время на сканирование
-        const delay = isPermissionError
-          ? Math.pow(2, attempt) * 2000  // 2s, 4s, 8s для EPERM
-          : Math.pow(2, attempt) * 1000; // 1s, 2s, 4s для остальных
-        console.log(`[RETRY] Ожидание ${delay}ms перед следующей попыткой...`);
+        // Ждём перед следующей попыткой с более агрессивным exponential backoff
+        let delay;
+        if (isTimeoutError || isNetworkError) {
+          // Для network/timeout ошибок ждём дольше: 5s, 15s, 30s, 60s, 120s
+          delay = Math.min(5000 * Math.pow(3, attempt), 120000);
+        } else if (isPermissionError) {
+          // Для EPERM ошибок: 2s, 4s, 8s, 16s, 32s
+          delay = Math.pow(2, attempt) * 2000;
+        } else {
+          // Для остальных: 2s, 4s, 8s, 16s, 32s
+          delay = Math.pow(2, attempt) * 2000;
+        }
+
+        console.log(`[RETRY] Ожидание ${(delay / 1000).toFixed(1)}s перед следующей попыткой...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -463,8 +523,8 @@ class MinecraftDownloader {
       console.log(`Нужно скачать библиотек: ${libsToDownload.length} из ${librariesToDownload.length}`);
 
       if (libsToDownload.length > 0) {
-        // МАКСИМАЛЬНАЯ СКОРОСТЬ - Параллельная загрузка библиотек (100 одновременно)
-        const limit = pLimit(100);
+        // Параллельная загрузка библиотек (20 одновременно для стабильности)
+        const limit = pLimit(20);
         let downloadedLibs = 0;
         const startTime = Date.now();
 
@@ -559,8 +619,8 @@ class MinecraftDownloader {
 
       console.log(`Нужно скачать assets: ${assetsToDownload.length} из ${assets.length}`);
 
-      // МАКСИМАЛЬНАЯ СКОРОСТЬ - Параллельная загрузка assets (100 одновременно)
-      const limit = pLimit(100);
+      // Параллельная загрузка assets (10 одновременно - ресурсы Mojang медленные)
+      const limit = pLimit(10);
       let downloadedAssets = 0;
       const startTime = Date.now();
 

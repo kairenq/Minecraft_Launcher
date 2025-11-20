@@ -312,8 +312,13 @@ class ModLoaderInstaller {
             if (!fs.existsSync(fullPath)) {
               await fs.ensureDir(path.dirname(fullPath));
 
+              // Критичные библиотеки Forge, без которых игра не запустится
+              const criticalLibs = ['fmlcore', 'fmlloader', 'javafmllanguage', 'lowcodelanguage', 'mclanguage'];
+              const isCritical = criticalLibs.some(critLib => libName.includes(critLib));
+
               // Попытка загрузки с retry логикой
-              let retries = 3;
+              // Для критичных библиотек используем больше попыток
+              let retries = isCritical ? 5 : 3;
               let lastError = null;
 
               for (let attempt = 0; attempt < retries; attempt++) {
@@ -322,6 +327,7 @@ class ModLoaderInstaller {
                     url: artifact.url,
                     method: 'GET',
                     responseType: 'stream',
+                    timeout: 60000, // 60 секунд
                     ...this.axiosConfig
                   });
 
@@ -333,18 +339,28 @@ class ModLoaderInstaller {
                   });
 
                   // Успешно загружено
+                  if (isCritical) {
+                    console.log(`[FORGE] ✓ Критичная библиотека загружена: ${libName}`);
+                  }
                   break;
                 } catch (err) {
                   lastError = err;
                   if (attempt < retries - 1) {
-                    console.warn(`[FORGE] Попытка ${attempt + 1}/${retries} не удалась для ${libName}, повторяем...`);
-                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                    const delay = 2000 * (attempt + 1); // 2s, 4s, 6s, 8s, 10s
+                    console.warn(`[FORGE] Попытка ${attempt + 1}/${retries} не удалась для ${libName}: ${err.message}`);
+                    console.warn(`[FORGE] Повторная попытка через ${delay/1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                   }
                 }
               }
 
               if (lastError && !fs.existsSync(fullPath)) {
-                console.warn(`[FORGE] Не удалось загрузить ${libName} после ${retries} попыток - пропускаем`);
+                if (isCritical) {
+                  // КРИТИЧНЫЕ библиотеки - выбрасываем ошибку!
+                  throw new Error(`Не удалось загрузить критичную библиотеку ${libName} после ${retries} попыток.\nURL: ${artifact.url}\nОшибка: ${lastError.message}\n\nЭта библиотека необходима для запуска Forge. Проверьте подключение к интернету и повторите установку.`);
+                } else {
+                  console.warn(`[FORGE] ⚠️  Не удалось загрузить ${libName} после ${retries} попыток - пропускаем (${lastError.message})`);
+                }
               }
             }
 

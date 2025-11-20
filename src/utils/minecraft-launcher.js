@@ -703,8 +703,23 @@ class MinecraftLauncher {
               // Заменяем относительные пути на абсолютные
               let processedArg = arg;
 
+              // КРИТИЧНО: Сначала проверяем специальные -D параметры (они могут не содержать libraries/ с слешем!)
+              if (arg.startsWith('-DlibraryDirectory=')) {
+                const eqIndex = arg.indexOf('=');
+                const paramValue = arg.substring(eqIndex + 1);
+                // Если значение "libraries" (без слеша!) - заменяем на абсолютный путь
+                if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
+                  processedArg = '-DlibraryDirectory=' + this.librariesDir;
+                  console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
+                  logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
+                }
+              }
+              // Специальная обработка для -DignoreList (не конвертируем пути - это список JAR файлов)
+              else if (arg.startsWith('-DignoreList=')) {
+                processedArg = arg; // Оставляем как есть
+              }
               // Проверяем содержит ли аргумент относительные пути libraries/
-              if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+              else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
                 // Функция для конвертации одного пути
                 const convertPath = (p) => {
                   if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
@@ -726,26 +741,13 @@ class MinecraftLauncher {
                 };
 
                 // Проверяем это -D параметр с путями (например -DlegacyClassPath=...)
-                if (arg.includes('=') && (arg.includes('libraries/') || arg.includes('libraries\\') || arg.startsWith('-DlibraryDirectory=') || arg.startsWith('-DignoreList='))) {
+                if (arg.includes('=')) {
                   const eqIndex = arg.indexOf('=');
                   const paramName = arg.substring(0, eqIndex + 1); // включая =
                   const paramValue = arg.substring(eqIndex + 1);
 
-                  // Специальная обработка для -DlibraryDirectory (Forge требует абсолютный путь!)
-                  if (arg.startsWith('-DlibraryDirectory=')) {
-                    // Если значение "libraries" или "libraries/" - заменяем на абсолютный путь
-                    if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
-                      processedArg = '-DlibraryDirectory=' + this.librariesDir;
-                      console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
-                      logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
-                    }
-                  }
-                  // Специальная обработка для -DignoreList (не конвертируем пути - это список JAR файлов)
-                  else if (arg.startsWith('-DignoreList=')) {
-                    processedArg = arg; // Оставляем как есть
-                  }
-                  // Обычная обработка путей для других -D параметров
-                  else if (paramValue.includes(';') || paramValue.includes(':')) {
+                  // Обычная обработка путей для -D параметров с libraries/
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
                     const separator = paramValue.includes(';') ? ';' : ':';
                     const paths = paramValue.split(separator);
                     const convertedPaths = paths.map(convertPath);
@@ -835,8 +837,23 @@ class MinecraftLauncher {
               prevWasFlag = (arg === '-p' || arg === '-cp' || arg === '-classpath');
               let processedArg = arg;
 
+              // КРИТИЧНО: Сначала проверяем специальные -D параметры (они могут не содержать libraries/ с слешем!)
+              if (arg.startsWith('-DlibraryDirectory=')) {
+                const eqIndex = arg.indexOf('=');
+                const paramValue = arg.substring(eqIndex + 1);
+                // Если значение "libraries" (без слеша!) - заменяем на абсолютный путь
+                if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
+                  processedArg = '-DlibraryDirectory=' + this.librariesDir;
+                  console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
+                  logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
+                }
+              }
+              // Специальная обработка для -DignoreList (не конвертируем пути)
+              else if (arg.startsWith('-DignoreList=')) {
+                processedArg = arg;
+              }
               // Проверяем содержит ли аргумент относительные пути libraries/
-              if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+              else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
                 const convertPath = (p) => {
                   if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
                     let relativePath = p.replace(/^libraries[\/\\]/, '');
@@ -855,25 +872,13 @@ class MinecraftLauncher {
                 };
 
                 // -D параметр с путями
-                if (arg.includes('=') && (arg.includes('libraries/') || arg.includes('libraries\\') || arg.startsWith('-DlibraryDirectory=') || arg.startsWith('-DignoreList='))) {
+                if (arg.includes('=')) {
                   const eqIndex = arg.indexOf('=');
                   const paramName = arg.substring(0, eqIndex + 1);
                   const paramValue = arg.substring(eqIndex + 1);
 
-                  // Специальная обработка для -DlibraryDirectory (Forge требует абсолютный путь!)
-                  if (arg.startsWith('-DlibraryDirectory=')) {
-                    if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
-                      processedArg = '-DlibraryDirectory=' + this.librariesDir;
-                      console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
-                      logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
-                    }
-                  }
-                  // Специальная обработка для -DignoreList (не конвертируем пути)
-                  else if (arg.startsWith('-DignoreList=')) {
-                    processedArg = arg;
-                  }
-                  // Обычная обработка путей
-                  else if (paramValue.includes(';') || paramValue.includes(':')) {
+                  // Обычная обработка путей для -D параметров с libraries/
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
                     const separator = paramValue.includes(';') ? ';' : ':';
                     const paths = paramValue.split(separator);
                     const convertedPaths = paths.map(convertPath);

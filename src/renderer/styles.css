@@ -169,6 +169,8 @@ body {
 .modpack-icon {
   width: 48px;
   height: 48px;
+  min-width: 48px;
+  min-height: 48px;
   border-radius: 50%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   flex-shrink: 0;
@@ -423,7 +425,7 @@ body {
 .modpack-header {
   display: flex;
   gap: 30px;
-  margin-bottom: 40px;
+  margin-bottom: 30px;
   padding: 30px;
   background: var(--bg-secondary);
   border-radius: 16px;
@@ -446,7 +448,7 @@ body {
 }
 
 .modpack-title-section h1 {
-  font-size: 42px;
+  font-size: 36px;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 15px;
@@ -546,6 +548,7 @@ body {
 .modpack-actions {
   display: flex;
   gap: 15px;
+  margin-top: 20px;
 }
 
 /* Кнопки */
@@ -591,6 +594,11 @@ body {
 
 .btn-secondary:hover {
   background: var(--bg-hover);
+}
+
+.btn-full-width {
+  width: 100%;
+  justify-content: center;
 }
 
 .btn-success {
@@ -663,18 +671,15 @@ body {
   position: fixed;
   bottom: 30px;
   right: 30px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
   z-index: 1000;
 }
 
 .floating-btn {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   border: none;
-  background: var(--accent);
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   cursor: pointer;
   display: flex;
@@ -682,7 +687,6 @@ body {
   justify-content: center;
   box-shadow: 0 4px 12px var(--shadow);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
 }
 
 .floating-btn:hover {
@@ -692,14 +696,6 @@ body {
 
 .floating-btn:active {
   transform: translateY(-2px) scale(1.05);
-}
-
-.theme-toggle {
-  background: linear-gradient(135deg, #FF6B6B, #FFD93D);
-}
-
-.settings-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
 }
 
 /* Настройки */
@@ -842,6 +838,164 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--bg-hover);
+}
+
+/* Модальное окно */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal.active {
+  display: flex;
+}
+
+.modal-content {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: auto;
+  position: relative;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-primary);
+  font-size: 28px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.modal-close:hover {
+  background: var(--bg-hover);
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 30px;
+}
+
+.modal-body h2 {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+/* Список модов */
+.mods-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid var(--bg-tertiary);
+  border-top: 4px solid var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.mods-loading p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.mods-list {
+  display: none;
+}
+
+.mods-list.active {
+  display: block;
+}
+
+.mod-item {
+  background: var(--bg-tertiary);
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  transition: all 0.3s ease;
+}
+
+.mod-item:hover {
+  background: var(--bg-hover);
+}
+
+.mod-icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.mod-info {
+  flex: 1;
+}
+
+.mod-info h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.mod-info p {
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 /* Адаптивность */

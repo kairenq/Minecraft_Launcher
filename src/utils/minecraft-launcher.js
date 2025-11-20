@@ -100,6 +100,134 @@ class MinecraftLauncher {
     });
   }
 
+  async checkAndDownloadCriticalLibraries(versionData, logStream) {
+    console.log('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===');
+    logStream.write('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===\n');
+
+    // Критичные библиотеки Forge
+    const criticalLibNames = ['fmlcore', 'fmlloader', 'javafmllanguage', 'lowcodelanguage', 'mclanguage'];
+    const axios = require('axios');
+    const missingLibs = [];
+
+    // Проверяем каждую библиотеку из version JSON
+    for (const lib of versionData.libraries || []) {
+      if (!lib.name) continue;
+
+      // Проверяем является ли библиотека критичной
+      const isCritical = criticalLibNames.some(critName => lib.name.includes(critName));
+      if (!isCritical) continue;
+
+      // Определяем путь к библиотеке
+      let libPath = null;
+      if (lib.downloads && lib.downloads.artifact) {
+        const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
+        libPath = path.join(this.librariesDir, normalizedPath);
+      } else if (lib.name) {
+        const parts = lib.name.split(':');
+        if (parts.length >= 3) {
+          const [group, artifact, version] = parts;
+          const groupPath = group.replace(/\./g, '/');
+          const fileName = `${artifact}-${version}.jar`;
+          libPath = path.join(this.librariesDir, groupPath.replace(/\//g, path.sep), artifact, version, fileName);
+        }
+      }
+
+      if (!libPath) continue;
+
+      // Проверяем существование файла
+      if (!fs.existsSync(libPath)) {
+        console.log(`❌ Отсутствует критичная библиотека: ${lib.name}`);
+        logStream.write(`[CRITICAL] Missing: ${lib.name}\n`);
+        missingLibs.push({ lib, libPath });
+      } else {
+        console.log(`✓ ${lib.name}`);
+      }
+    }
+
+    // Если есть недостающие критичные библиотеки - загружаем
+    if (missingLibs.length > 0) {
+      console.log(`\n⚠️  Обнаружено ${missingLibs.length} недостающих критичных библиотек`);
+      console.log('Автоматическая загрузка...\n');
+      logStream.write(`\n[AUTO-REPAIR] Downloading ${missingLibs.length} missing critical libraries\n`);
+
+      for (const { lib, libPath } of missingLibs) {
+        const libName = lib.name;
+        console.log(`Загрузка: ${libName}...`);
+
+        // Определяем URL для загрузки
+        let downloadUrl = null;
+        if (lib.downloads && lib.downloads.artifact && lib.downloads.artifact.url) {
+          downloadUrl = lib.downloads.artifact.url;
+        } else {
+          // Строим URL вручную для Forge библиотек
+          const parts = lib.name.split(':');
+          if (parts.length >= 3) {
+            const [group, artifact, version] = parts;
+            const groupPath = group.replace(/\./g, '/');
+            const fileName = `${artifact}-${version}.jar`;
+            const baseUrl = 'https://maven.minecraftforge.net/';
+            downloadUrl = `${baseUrl}${groupPath}/${artifact}/${version}/${fileName}`;
+          }
+        }
+
+        if (!downloadUrl) {
+          console.error(`  ❌ Не удалось определить URL для ${libName}`);
+          logStream.write(`[AUTO-REPAIR] ERROR: Cannot determine URL for ${libName}\n`);
+          continue;
+        }
+
+        // Создаём директорию
+        await fs.ensureDir(path.dirname(libPath));
+
+        // Загружаем с retry
+        let success = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            console.log(`  Попытка ${attempt + 1}/5: ${downloadUrl}`);
+            const response = await axios({
+              url: downloadUrl,
+              method: 'GET',
+              responseType: 'stream',
+              timeout: 60000
+            });
+
+            const writer = fs.createWriteStream(libPath);
+            await new Promise((resolve, reject) => {
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+              response.data.pipe(writer);
+            });
+
+            console.log(`  ✓ Успешно загружено: ${libName}`);
+            logStream.write(`[AUTO-REPAIR] Downloaded: ${libName}\n`);
+            success = true;
+            break;
+          } catch (err) {
+            console.warn(`  Попытка ${attempt + 1}/5 не удалась: ${err.message}`);
+            if (attempt < 4) {
+              const delay = 2000 * (attempt + 1);
+              console.log(`  Повтор через ${delay/1000}s...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        if (!success) {
+          const error = `Не удалось загрузить критичную библиотеку ${libName} после 5 попыток.\nURL: ${downloadUrl}\n\nПопробуйте переустановить сборку.`;
+          console.error(`\n❌ ${error}`);
+          logStream.write(`[AUTO-REPAIR] FAILED: ${error}\n`);
+          throw new Error(error);
+        }
+      }
+
+      console.log(`\n✓ Все критичные библиотеки восстановлены!\n`);
+      logStream.write(`[AUTO-REPAIR] All critical libraries restored\n\n`);
+    } else {
+      console.log('✓ Все критичные библиотеки на месте\n');
+      logStream.write('[CHECK] All critical libraries present\n\n');
+    }
+  }
+
   async launch(options, callback) {
     try {
       const { version, username, memory, javaPath, gameDir, modLoader, modLoaderVersion } = options;
@@ -292,6 +420,11 @@ class MinecraftLauncher {
         } else {
           console.warn(`⚠️  Базовый профиль не найден: ${baseVersionPath}`);
         }
+      }
+
+      // КРИТИЧНО: Проверяем и загружаем недостающие критичные библиотеки Forge
+      if (versionId.includes('forge')) {
+        await this.checkAndDownloadCriticalLibraries(versionData, logStream);
       }
 
       // Создание директорий

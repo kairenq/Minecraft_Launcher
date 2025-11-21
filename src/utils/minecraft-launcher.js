@@ -152,21 +152,72 @@ class MinecraftLauncher {
         name: `net.minecraftforge:mclanguage:${fullForgeVersion}`,
         artifact: 'mclanguage',
         group: 'net.minecraftforge'
+      },
+      // LWJGL 3.2.2 - критичные библиотеки для Minecraft 1.18.2
+      {
+        name: 'org.lwjgl:lwjgl:3.2.2',
+        artifact: 'lwjgl',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-jemalloc:3.2.2',
+        artifact: 'lwjgl-jemalloc',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-openal:3.2.2',
+        artifact: 'lwjgl-openal',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-opengl:3.2.2',
+        artifact: 'lwjgl-opengl',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-glfw:3.2.2',
+        artifact: 'lwjgl-glfw',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-stb:3.2.2',
+        artifact: 'lwjgl-stb',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-tinyfd:3.2.2',
+        artifact: 'lwjgl-tinyfd',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
       }
     ];
 
     // Проверяем жестко закодированные критичные библиотеки
     for (const lib of hardcodedCriticalLibs) {
       const groupPath = lib.group.replace(/\./g, path.sep);
+      const libVersion = lib.version || fullForgeVersion; // LWJGL имеет свою версию
       const fileName = lib.classifier
-        ? `${lib.artifact}-${fullForgeVersion}-${lib.classifier}.jar`
-        : `${lib.artifact}-${fullForgeVersion}.jar`;
-      const libPath = path.join(this.librariesDir, groupPath, lib.artifact, fullForgeVersion, fileName);
+        ? `${lib.artifact}-${libVersion}-${lib.classifier}.jar`
+        : `${lib.artifact}-${libVersion}.jar`;
+      const libPath = path.join(this.librariesDir, groupPath, lib.artifact, libVersion, fileName);
 
       if (!fs.existsSync(libPath)) {
         console.log(`❌ Отсутствует критичная библиотека: ${lib.name}`);
         logStream.write(`[CRITICAL] Missing: ${lib.name}\n`);
-        missingLibs.push({ lib, libPath, fullVersion: fullForgeVersion });
+        missingLibs.push({ lib, libPath, libVersion });
       } else {
         console.log(`✓ ${lib.name}`);
       }
@@ -178,17 +229,18 @@ class MinecraftLauncher {
       console.log('Автоматическая загрузка...\n');
       logStream.write(`\n[AUTO-REPAIR] Downloading ${missingLibs.length} missing critical libraries\n`);
 
-      for (const { lib, libPath, fullVersion } of missingLibs) {
+      for (const { lib, libPath, libVersion } of missingLibs) {
         const libName = lib.name;
         console.log(`Загрузка: ${libName}...`);
 
-        // Строим URL для загрузки критичных библиотек Forge
+        // Строим URL для загрузки критичных библиотек
         const groupPath = lib.group.replace(/\./g, '/');
         const fileName = lib.classifier
-          ? `${lib.artifact}-${fullVersion}-${lib.classifier}.jar`
-          : `${lib.artifact}-${fullVersion}.jar`;
-        const baseUrl = 'https://maven.minecraftforge.net/';
-        const downloadUrl = `${baseUrl}${groupPath}/${lib.artifact}/${fullVersion}/${fileName}`;
+          ? `${lib.artifact}-${libVersion}-${lib.classifier}.jar`
+          : `${lib.artifact}-${libVersion}.jar`;
+        // LWJGL используется из Maven Central, Forge - из maven.minecraftforge.net
+        const baseUrl = lib.baseUrl || 'https://maven.minecraftforge.net/';
+        const downloadUrl = `${baseUrl}${groupPath}/${lib.artifact}/${libVersion}/${fileName}`;
 
         console.log(`  URL: ${downloadUrl}`);
         logStream.write(`[AUTO-REPAIR] URL: ${downloadUrl}\n`);

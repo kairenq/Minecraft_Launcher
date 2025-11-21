@@ -584,6 +584,31 @@ class MinecraftLauncher {
             });
 
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);
+
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path для модов типа Embeddium
+            // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
+            const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
+            if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
+              console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
+
+              // Находим все LWJGL библиотеки в classpath (используем libraries, т.к. filteredLibraries еще не создан)
+              const lwjglLibs = libraries.filter(lib => {
+                const libName = path.basename(lib);
+                return libName.startsWith('lwjgl-') && !libName.includes('-natives-');
+              });
+
+              if (lwjglLibs.length > 0) {
+                console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
+
+                // Добавляем LWJGL библиотеки к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndex + 1];
+                const lwjglPaths = lwjglLibs.join(separator);
+                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + lwjglPaths;
+
+                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
+                lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
+              }
+            }
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
           }

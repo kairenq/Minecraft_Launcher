@@ -124,6 +124,10 @@ class MinecraftLauncher {
     console.log(`[FORGE] Версия: ${fullForgeVersion}`);
     logStream.write(`[FORGE] Version: ${fullForgeVersion}\n`);
 
+    // ДЕБАГ: Версия кода для проверки
+    console.log('[DEBUG] minecraft-launcher.js version: 2025-11-21-LWJGL-FIX');
+    logStream.write('[DEBUG] Code version: 2025-11-21-LWJGL-FIX\n');
+
     // Жестко закодированные критичные библиотеки Forge (НЕ включены в version JSON!)
     // Эти библиотеки являются частью внутренних модулей Forge и загружаются динамически
     const hardcodedCriticalLibs = [
@@ -205,6 +209,10 @@ class MinecraftLauncher {
       }
     ];
 
+    // ДЕБАГ: Печатаем количество библиотек для проверки
+    console.log(`[DEBUG] Checking ${hardcodedCriticalLibs.length} critical libraries (5 Forge + 7 LWJGL)`);
+    logStream.write(`[DEBUG] Total libraries to check: ${hardcodedCriticalLibs.length}\n`);
+
     // Проверяем жестко закодированные критичные библиотеки
     for (const lib of hardcodedCriticalLibs) {
       const groupPath = lib.group.replace(/\./g, path.sep);
@@ -213,6 +221,9 @@ class MinecraftLauncher {
         ? `${lib.artifact}-${libVersion}-${lib.classifier}.jar`
         : `${lib.artifact}-${libVersion}.jar`;
       const libPath = path.join(this.librariesDir, groupPath, lib.artifact, libVersion, fileName);
+
+      // ДЕБАГ: Логируем каждую проверку
+      console.log(`[DEBUG] Checking: ${lib.name} at ${libPath}`);
 
       if (!fs.existsSync(libPath)) {
         console.log(`❌ Отсутствует критичная библиотека: ${lib.name}`);

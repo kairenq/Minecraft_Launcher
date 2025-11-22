@@ -752,7 +752,15 @@ class MinecraftLauncher {
           'asm-util',
           'asm-analysis',
           // Forge SPI
-          'forgespi'
+          'forgespi',
+          // LWJGL (КРИТИЧНО: должен быть ТОЛЬКО в module path!)
+          'lwjgl-3.2.2.jar',
+          'lwjgl-jemalloc',
+          'lwjgl-openal',
+          'lwjgl-opengl',
+          'lwjgl-glfw',
+          'lwjgl-stb',
+          'lwjgl-tinyfd'
         ];
 
         finalLibraries = uniqueLibraries.filter(lib => {

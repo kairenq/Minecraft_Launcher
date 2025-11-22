@@ -556,14 +556,58 @@ function updateUI() {
   renderModpacks();
 }
 
-// Уведомления
-function showNotification(message, isError = false) {
-  // Простое уведомление через alert (можно улучшить)
-  if (isError) {
-    alert('Ошибка: ' + message);
-  } else {
-    alert(message);
+// Система toast-уведомлений
+function showNotification(message, type = 'success') {
+  // type может быть: 'success', 'error', 'info', 'warning'
+  // Для обратной совместимости: если второй параметр boolean
+  if (typeof type === 'boolean') {
+    type = type ? 'error' : 'success';
   }
+
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  // Иконки для разных типов
+  const icons = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>'
+  };
+
+  toast.innerHTML = `
+    <div class="toast-icon">${icons[type] || icons.info}</div>
+    <div class="toast-content">
+      <p class="toast-message">${message}</p>
+    </div>
+    <button class="toast-close" aria-label="Закрыть">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+  `;
+
+  // Добавляем toast в контейнер
+  container.appendChild(toast);
+
+  // Обработчик кнопки закрытия
+  const closeBtn = toast.querySelector('.toast-close');
+  closeBtn.addEventListener('click', () => removeToast(toast));
+
+  // Автоматическое удаление через 5 секунд
+  setTimeout(() => removeToast(toast), 5000);
+}
+
+function removeToast(toast) {
+  if (!toast || toast.classList.contains('removing')) return;
+
+  toast.classList.add('removing');
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 300);
 }
 
 // Обработка ошибок

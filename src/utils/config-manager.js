@@ -28,6 +28,7 @@ class ConfigManager {
         id: 'skydustry-1-20-1',
         name: 'Skydustry',
         description: 'Тестовая сборка Minecraft 1.20.1 с модами на Forge. Индустриальная сборка с акцентом на автоматизацию, технологии и строительство. Создавайте сложные производственные цепочки, автоматизируйте процессы и стройте масштабные заводы!',
+        icon: 'assets/modpacks/skydustry_logo.jpg',
         minecraftVersion: '1.20.1',
         modLoader: 'forge',
         modLoaderVersion: null,

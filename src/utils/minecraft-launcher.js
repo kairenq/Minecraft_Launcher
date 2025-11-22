@@ -45,7 +45,9 @@ class MinecraftLauncher {
 
         // Способ 1: Есть downloads.artifact (стандарт Mojang)
         if (lib.downloads && lib.downloads.artifact) {
-          libPath = path.join(this.librariesDir, lib.downloads.artifact.path);
+          // Конвертируем Unix-style путь в platform-specific
+          const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
+          libPath = path.join(this.librariesDir, normalizedPath);
         }
         // Способ 2: Только name (Forge/Fabric библиотеки)
         else if (lib.name) {
@@ -98,18 +100,243 @@ class MinecraftLauncher {
     });
   }
 
+  async checkAndDownloadCriticalLibraries(versionData, logStream) {
+    console.log('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===');
+    logStream.write('\n=== ПРОВЕРКА КРИТИЧНЫХ БИБЛИОТЕК FORGE ===\n');
+
+    const axios = require('axios');
+    const missingLibs = [];
+
+    // Извлекаем версию Forge из versionData.id (например, "1.18.2-forge-40.3.0")
+    const versionId = versionData.id || '';
+    const forgeMatch = versionId.match(/forge-(.+)/);
+    if (!forgeMatch) {
+      console.log('⚠️  Не удалось определить версию Forge из versionId');
+      logStream.write('[CHECK] Cannot determine Forge version\n\n');
+      return;
+    }
+
+    const forgeVersion = forgeMatch[1]; // например "40.3.0"
+    const mcVersionMatch = versionId.match(/^([0-9.]+)-/);
+    const mcVersion = mcVersionMatch ? mcVersionMatch[1] : '';
+    const fullForgeVersion = `${mcVersion}-${forgeVersion}`;
+
+    console.log(`[FORGE] Версия: ${fullForgeVersion}`);
+    logStream.write(`[FORGE] Version: ${fullForgeVersion}\n`);
+
+    // ДЕБАГ: Версия кода для проверки
+    console.log('[DEBUG] minecraft-launcher.js version: 2025-11-21-LWJGL-FIX');
+    logStream.write('[DEBUG] Code version: 2025-11-21-LWJGL-FIX\n');
+
+    // Жестко закодированные критичные библиотеки Forge (НЕ включены в version JSON!)
+    // Эти библиотеки являются частью внутренних модулей Forge и загружаются динамически
+    const hardcodedCriticalLibs = [
+      {
+        name: `net.minecraftforge:forge:${fullForgeVersion}:universal`,
+        artifact: 'forge',
+        group: 'net.minecraftforge',
+        classifier: 'universal'
+      },
+      {
+        name: `net.minecraftforge:fmlcore:${fullForgeVersion}`,
+        artifact: 'fmlcore',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:javafmllanguage:${fullForgeVersion}`,
+        artifact: 'javafmllanguage',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:lowcodelanguage:${fullForgeVersion}`,
+        artifact: 'lowcodelanguage',
+        group: 'net.minecraftforge'
+      },
+      {
+        name: `net.minecraftforge:mclanguage:${fullForgeVersion}`,
+        artifact: 'mclanguage',
+        group: 'net.minecraftforge'
+      },
+      // LWJGL 3.2.2 - критичные библиотеки для Minecraft 1.18.2
+      {
+        name: 'org.lwjgl:lwjgl:3.2.2',
+        artifact: 'lwjgl',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-jemalloc:3.2.2',
+        artifact: 'lwjgl-jemalloc',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-openal:3.2.2',
+        artifact: 'lwjgl-openal',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-opengl:3.2.2',
+        artifact: 'lwjgl-opengl',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-glfw:3.2.2',
+        artifact: 'lwjgl-glfw',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-stb:3.2.2',
+        artifact: 'lwjgl-stb',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      },
+      {
+        name: 'org.lwjgl:lwjgl-tinyfd:3.2.2',
+        artifact: 'lwjgl-tinyfd',
+        group: 'org.lwjgl',
+        version: '3.2.2',
+        baseUrl: 'https://repo1.maven.org/maven2/'
+      }
+    ];
+
+    // ДЕБАГ: Печатаем количество библиотек для проверки
+    console.log(`[DEBUG] Checking ${hardcodedCriticalLibs.length} critical libraries (5 Forge + 7 LWJGL)`);
+    logStream.write(`[DEBUG] Total libraries to check: ${hardcodedCriticalLibs.length}\n`);
+
+    // Проверяем жестко закодированные критичные библиотеки
+    for (const lib of hardcodedCriticalLibs) {
+      const groupPath = lib.group.replace(/\./g, path.sep);
+      const libVersion = lib.version || fullForgeVersion; // LWJGL имеет свою версию
+      const fileName = lib.classifier
+        ? `${lib.artifact}-${libVersion}-${lib.classifier}.jar`
+        : `${lib.artifact}-${libVersion}.jar`;
+      const libPath = path.join(this.librariesDir, groupPath, lib.artifact, libVersion, fileName);
+
+      // ДЕБАГ: Логируем каждую проверку
+      console.log(`[DEBUG] Checking: ${lib.name} at ${libPath}`);
+
+      if (!fs.existsSync(libPath)) {
+        console.log(`❌ Отсутствует критичная библиотека: ${lib.name}`);
+        logStream.write(`[CRITICAL] Missing: ${lib.name}\n`);
+        missingLibs.push({ lib, libPath, libVersion });
+      } else {
+        console.log(`✓ ${lib.name}`);
+      }
+    }
+
+    // Если есть недостающие критичные библиотеки - загружаем
+    if (missingLibs.length > 0) {
+      console.log(`\n⚠️  Обнаружено ${missingLibs.length} недостающих критичных библиотек`);
+      console.log('Автоматическая загрузка...\n');
+      logStream.write(`\n[AUTO-REPAIR] Downloading ${missingLibs.length} missing critical libraries\n`);
+
+      for (const { lib, libPath, libVersion } of missingLibs) {
+        const libName = lib.name;
+        console.log(`Загрузка: ${libName}...`);
+
+        // Строим URL для загрузки критичных библиотек
+        const groupPath = lib.group.replace(/\./g, '/');
+        const fileName = lib.classifier
+          ? `${lib.artifact}-${libVersion}-${lib.classifier}.jar`
+          : `${lib.artifact}-${libVersion}.jar`;
+        // LWJGL используется из Maven Central, Forge - из maven.minecraftforge.net
+        const baseUrl = lib.baseUrl || 'https://maven.minecraftforge.net/';
+        const downloadUrl = `${baseUrl}${groupPath}/${lib.artifact}/${libVersion}/${fileName}`;
+
+        console.log(`  URL: ${downloadUrl}`);
+        logStream.write(`[AUTO-REPAIR] URL: ${downloadUrl}\n`);
+
+        // Создаём директорию
+        await fs.ensureDir(path.dirname(libPath));
+
+        // Загружаем с retry
+        let success = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            console.log(`  Попытка ${attempt + 1}/5: ${downloadUrl}`);
+            const response = await axios({
+              url: downloadUrl,
+              method: 'GET',
+              responseType: 'stream',
+              timeout: 60000
+            });
+
+            const writer = fs.createWriteStream(libPath);
+            await new Promise((resolve, reject) => {
+              writer.on('finish', resolve);
+              writer.on('error', reject);
+              response.data.pipe(writer);
+            });
+
+            console.log(`  ✓ Успешно загружено: ${libName}`);
+            logStream.write(`[AUTO-REPAIR] Downloaded: ${libName}\n`);
+            success = true;
+            break;
+          } catch (err) {
+            console.warn(`  Попытка ${attempt + 1}/5 не удалась: ${err.message}`);
+            if (attempt < 4) {
+              const delay = 2000 * (attempt + 1);
+              console.log(`  Повтор через ${delay/1000}s...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        if (!success) {
+          const error = `Не удалось загрузить критичную библиотеку ${libName} после 5 попыток.\nURL: ${downloadUrl}\n\nПопробуйте переустановить сборку.`;
+          console.error(`\n❌ ${error}`);
+          logStream.write(`[AUTO-REPAIR] FAILED: ${error}\n`);
+          throw new Error(error);
+        }
+      }
+
+      console.log(`\n✓ Все критичные библиотеки восстановлены!\n`);
+      logStream.write(`[AUTO-REPAIR] All critical libraries restored\n\n`);
+    } else {
+      console.log('✓ Все критичные библиотеки на месте\n');
+      logStream.write('[CHECK] All critical libraries present\n\n');
+    }
+  }
+
   async launch(options, callback) {
     try {
       const { version, username, memory, javaPath, gameDir, modLoader, modLoaderVersion } = options;
 
+      // Создаём лог-файл СРАЗУ, чтобы логировать все операции
+      const logsDir = path.join(gameDir, 'logs');
+      await fs.ensureDir(logsDir);
+      const logFile = path.join(logsDir, 'launcher.log');
+      const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+      // Записываем заголовок в лог
+      logStream.write('\n' + '='.repeat(80) + '\n');
+      logStream.write(`ЗАПУСК: ${new Date().toISOString()}\n`);
+      logStream.write(`Версия: ${version}\n`);
+      logStream.write(`Пользователь: ${username}\n`);
+      logStream.write(`RAM: ${memory} MB\n`);
+      logStream.write(`Java: ${javaPath}\n`);
+      logStream.write(`GameDir: ${gameDir}\n`);
+      logStream.write('='.repeat(80) + '\n\n');
+
       console.log('\n=== ЗАПУСК MINECRAFT ===');
       console.log('Версия:', version);
-      console.log('Модлоадер:', modLoader || 'vanilla');
+      console.log('Модлоадер:', modLoader || 'не указан (undefined)');
       if (modLoaderVersion) console.log('Версия модлоадера:', modLoaderVersion);
       console.log('Пользователь:', username);
       console.log('Память (RAM):', memory, 'MB');
       console.log('Java путь:', javaPath);
       console.log('Директория игры:', gameDir);
+      console.log('DEBUG: modLoader type:', typeof modLoader, ', value:', modLoader);
 
       // Проверка существования Java
       if (!javaPath || !fs.existsSync(javaPath)) {
@@ -153,14 +380,25 @@ class MinecraftLauncher {
         } else {
           throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
         }
+      } else if (!modLoader && version.includes('forge')) {
+        // Если modLoader не указан, но version содержит 'forge' - автоопределение
+        console.log('⚠️  modLoader не указан, но версия содержит "forge" - автоопределение');
+        versionId = version;
       }
+
+      console.log('DEBUG: Финальный versionId:', versionId);
+      logStream.write(`\n[LAUNCH] Final versionId: ${versionId}\n`);
+      logStream.write(`[LAUNCH] modLoader: ${modLoader}\n`);
+      logStream.write(`[LAUNCH] version: ${version}\n`);
 
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
+      logStream.write(`[LAUNCH] Version JSON path: ${versionJsonPath}\n`);
 
       if (!fs.existsSync(versionJsonPath)) {
         const error = `Файл версии не найден: ${versionJsonPath}.\nПереустановите сборку.`;
         console.error(error);
+        logStream.write(`[ERROR] ${error}\n`);
         throw new Error(error);
       }
 
@@ -264,26 +502,15 @@ class MinecraftLauncher {
         }
       }
 
+      // КРИТИЧНО: Проверяем и загружаем недостающие критичные библиотеки Forge
+      if (versionId.includes('forge')) {
+        await this.checkAndDownloadCriticalLibraries(versionData, logStream);
+      }
+
       // Создание директорий
       await fs.ensureDir(gameDir);
       const nativesDir = path.join(gameDir, 'natives');
       await fs.ensureDir(nativesDir);
-
-      // Создаем файл для логов (делаем это СРАЗУ, чтобы можно было логировать все операции)
-      const logsDir = path.join(gameDir, 'logs');
-      await fs.ensureDir(logsDir);
-      const logFile = path.join(logsDir, 'launcher.log');
-      const logStream = fs.createWriteStream(logFile, { flags: 'a' });
-
-      // Записываем заголовок в лог
-      logStream.write('\n' + '='.repeat(80) + '\n');
-      logStream.write(`ЗАПУСК: ${new Date().toISOString()}\n`);
-      logStream.write(`Версия: ${version}\n`);
-      logStream.write(`Пользователь: ${username}\n`);
-      logStream.write(`RAM: ${memory} MB\n`);
-      logStream.write(`Java: ${javaPath}\n`);
-      logStream.write(`GameDir: ${gameDir}\n`);
-      logStream.write('='.repeat(80) + '\n\n');
 
       // Извлечение нативных библиотек
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
@@ -495,10 +722,57 @@ class MinecraftLauncher {
         logStream.write(`[INFO] Filtered out ${removed} natives JARs\n`);
       }
 
-      const separator = process.platform === 'win32' ? ';' : ':';
-      const classpath = filteredLibraries.join(separator);
+      // КРИТИЧНО: Убираем дубликаты из classpath
+      // Set автоматически убирает повторяющиеся пути
+      const uniqueLibraries = [...new Set(filteredLibraries)];
+      if (uniqueLibraries.length < filteredLibraries.length) {
+        const duplicates = filteredLibraries.length - uniqueLibraries.length;
+        console.log(`✓ Убрано ${duplicates} дубликатов из classpath`);
+        logStream.write(`[INFO] Removed ${duplicates} duplicates from classpath\n`);
+      }
 
-      console.log(`✓ Финальный classpath: ${filteredLibraries.length} JAR файлов (без natives)`);
+      // Для Forge 1.17+: убираем модульные библиотеки из classpath
+      // Они должны быть ТОЛЬКО в module path, НЕ в classpath!
+      let finalLibraries = uniqueLibraries;
+      if (versionId.includes('forge')) {
+        const modulePathLibs = [
+          // FML библиотеки (КРИТИЧНО!)
+          'fmlloader',
+          'fmlcore',
+          'javafmllanguage',
+          'lowcodelanguage',
+          'mclanguage',
+          // Bootstrap и вспомогательные
+          'bootstraplauncher',
+          'securejarhandler',
+          // ASM
+          'asm-9.3.jar',
+          'asm-commons',
+          'asm-tree',
+          'asm-util',
+          'asm-analysis',
+          // Forge SPI
+          'forgespi'
+        ];
+
+        finalLibraries = uniqueLibraries.filter(lib => {
+          const libName = path.basename(lib);
+          const isModulePath = modulePathLibs.some(moduleName => libName.includes(moduleName));
+          if (isModulePath) {
+            console.log(`[DEBUG] Исключено из classpath (будет в module path): ${libName}`);
+            logStream.write(`[FILTER] Excluded from classpath (module path): ${libName}\n`);
+          }
+          return !isModulePath;
+        });
+
+        console.log(`✓ Убрано ${uniqueLibraries.length - finalLibraries.length} модульных библиотек из classpath`);
+        logStream.write(`[INFO] Removed ${uniqueLibraries.length - finalLibraries.length} module libs from classpath\n`);
+      }
+
+      const separator = process.platform === 'win32' ? ';' : ':';
+      const classpath = finalLibraries.join(separator);
+
+      console.log(`✓ Финальный classpath: ${finalLibraries.length} JAR файлов (без natives, дубликатов и модульных библиотек)`);
 
       // Логируем финальную команду
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
@@ -552,44 +826,177 @@ class MinecraftLauncher {
       console.log(`Всего JVM arguments в JSON: ${versionData.arguments && versionData.arguments.jvm ? versionData.arguments.jvm.length : 0}`);
 
       // Для Forge 1.17+: загружаем аргументы из win_args.txt/unix_args.txt
-      if (modLoader === 'forge' && versionId.includes('forge')) {
+      // Проверяем только versionId, т.к. modLoader может не передаваться
+      console.log(`\nDEBUG: Проверка Forge - versionId.includes('forge'): ${versionId.includes('forge')}`);
+
+      console.log(`\n[DEBUG] Проверка Forge: versionId.includes('forge') = ${versionId.includes('forge')}`);
+      logStream.write(`\n[FORGE_CHECK] versionId: "${versionId}"\n`);
+      logStream.write(`[FORGE_CHECK] Contains 'forge': ${versionId.includes('forge')}\n`);
+
+      // Флаг для отслеживания успешной загрузки аргументов из win_args.txt
+      // Вынесен наружу чтобы использовать для пропуска arguments.jvm
+      let forgeArgsLoaded = false;
+
+      if (versionId.includes('forge')) {
+        console.log('>>> FORGE 1.17+ DETECTED: Загрузка специальных JVM аргументов');
+        logStream.write('\n=== FORGE 1.17+ MODE ===\n');
+
+        // FALLBACK аргументы - используются только если win_args.txt не найден
+        // win_args.txt уже содержит все необходимые аргументы
+        const essentialForgeArgs = [
+          '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
+          '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler',
+          '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
+          '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming'
+        ];
+
+        // НЕ добавляем здесь - добавим как fallback только если win_args.txt не найден
+        // essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
+        logStream.write(`[FORGE] Essential args prepared for fallback (${essentialForgeArgs.length} args)\n`);
+
         const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
+        logStream.write(`[FORGE] Args file: ${argsFileName}\n`);
 
         // Формат пути: libraries/net/minecraftforge/forge/{version}/win_args.txt
         // Из versionId (например "1.18.2-forge-40.3.0") извлекаем "1.18.2-40.3.0"
-        const forgeFullVersion = versionId.replace('forge-', '').replace('-', '-forge-');
+        // Убираем "-forge-" между версией майнкрафта и версией forge
+        const forgeFullVersion = versionId.replace(/-forge-/, '-');
+        console.log(`>>> FORGE: Ожидаемая версия: ${forgeFullVersion}`);
+        logStream.write(`[FORGE] Expected version: ${forgeFullVersion}\n`);
 
         const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
 
-        console.log(`\n>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
+        console.log(`>>> FORGE: Поиск файла аргументов: ${argsFilePath}`);
+        logStream.write(`[FORGE] Searching for: ${argsFilePath}\n`);
 
         if (fs.existsSync(argsFilePath)) {
           try {
+            logStream.write(`[FORGE] ✓ File exists!\n`);
             const forgeArgsContent = await fs.readFile(argsFilePath, 'utf8');
             console.log(`✓ Найден ${argsFileName}, содержимое:`);
             console.log(forgeArgsContent.substring(0, 500));
+            logStream.write(`[FORGE] Content (first 500 chars):\n${forgeArgsContent.substring(0, 500)}\n`);
 
             // Парсим аргументы (они разделены пробелами, но пути в module path - через ; или :)
             const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
 
             console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments из ${argsFileName}`);
+            logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
+
+            // win_args.txt содержит: <jvm_args> <main_class> <program_args>
+            // Нам нужны только JVM args (начинаются с - или являются путями для -p)
+            // Когда встречаем main class (cpw.mods... или net.minecraftforge...), останавливаемся
+            let hitMainClass = false;
+            let prevWasFlag = false; // Предыдущий аргумент был флагом типа -p, нужен путь
 
             // Добавляем Forge аргументы ПЕРЕД базовыми JVM args
-            forgeArgsParsed.forEach(arg => {
-              // Заменяем относительные пути на абсолютные
-              if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
-                arg = path.join(this.librariesDir, '..', arg);
+            forgeArgsParsed.forEach((arg, idx) => {
+              // Проверяем не дошли ли до main class или program args
+              if (hitMainClass) return;
+
+              // Main class обычно это полное имя класса (cpw.mods... или net.minecraftforge...)
+              if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at main class: ${arg}`);
+                logStream.write(`[FORGE] Stopped parsing at main class: ${arg}\n`);
+                return;
               }
-              jvmArgs.push(arg);
+
+              // Пропускаем program arguments (начинаются с -- но не являются JVM аргументами)
+              if (arg.startsWith('--') && !arg.startsWith('--add-') && !prevWasFlag) {
+                // Это program argument типа --launchTarget, --fml.forgeVersion
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at program arg: ${arg}`);
+                logStream.write(`[FORGE] Stopped parsing at program arg: ${arg}\n`);
+                return;
+              }
+
+              // Отслеживаем флаги которым нужно значение
+              prevWasFlag = (arg === '-p' || arg === '-cp' || arg === '-classpath');
+              // Заменяем относительные пути на абсолютные
+              let processedArg = arg;
+
+              // КРИТИЧНО: Сначала проверяем специальные -D параметры (они могут не содержать libraries/ с слешем!)
+              if (arg.startsWith('-DlibraryDirectory=')) {
+                const eqIndex = arg.indexOf('=');
+                const paramValue = arg.substring(eqIndex + 1);
+                // Если значение "libraries" (без слеша!) - заменяем на абсолютный путь
+                if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
+                  processedArg = '-DlibraryDirectory=' + this.librariesDir;
+                  console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
+                  logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
+                }
+              }
+              // Специальная обработка для -DignoreList (не конвертируем пути - это список JAR файлов)
+              else if (arg.startsWith('-DignoreList=')) {
+                processedArg = arg; // Оставляем как есть
+              }
+              // Проверяем содержит ли аргумент относительные пути libraries/
+              else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+                // Функция для конвертации одного пути
+                const convertPath = (p) => {
+                  if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
+                    let relativePath = p.replace(/^libraries[\/\\]/, '');
+
+                    // Заменяем server на client для путей Minecraft (для клиентского запуска)
+                    // net/minecraft/server/... -> net/minecraft/client/...
+                    // server-1.18.2-... -> client-1.18.2-...
+                    if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
+                      relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
+                      relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
+                      console.log(`[PATH] Converted server->client: ${p} -> libraries/${relativePath}`);
+                    }
+
+                    const normalizedPath = relativePath.split('/').join(path.sep);
+                    return path.join(this.librariesDir, normalizedPath);
+                  }
+                  return p;
+                };
+
+                // Проверяем это -D параметр с путями (например -DlegacyClassPath=...)
+                if (arg.includes('=')) {
+                  const eqIndex = arg.indexOf('=');
+                  const paramName = arg.substring(0, eqIndex + 1); // включая =
+                  const paramValue = arg.substring(eqIndex + 1);
+
+                  // Обычная обработка путей для -D параметров с libraries/
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
+                    const separator = paramValue.includes(';') ? ';' : ':';
+                    const paths = paramValue.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = paramName + convertedPaths.join(path.delimiter);
+                    logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}... -> ${processedArg.substring(0, 100)}...\n`);
+                  } else {
+                    processedArg = paramName + convertPath(paramValue);
+                    logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}... -> ${processedArg.substring(0, 100)}...\n`);
+                  }
+                }
+                // Обычный аргумент начинающийся с libraries/
+                else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                  if (arg.includes(';') || arg.includes(':')) {
+                    const separator = arg.includes(';') ? ';' : ':';
+                    const paths = arg.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = convertPath(arg);
+                  }
+                  logStream.write(`[FORGE] Arg[${idx}] converted (multiple paths): ${arg.substring(0, 200)}... -> ${processedArg.substring(0, 200)}...\n`);
+                }
+              }
+              jvmArgs.push(processedArg);
             });
 
             console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из ${argsFileName}`);
+            logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
+            forgeArgsLoaded = true; // Успешно загрузили из win_args.txt
 
             // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path для модов типа Embeddium
             // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
             const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
             if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
+              logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
 
               // Находим все LWJGL библиотеки в classpath (используем libraries, т.к. filteredLibraries еще не создан)
               const lwjglLibs = libraries.filter(lib => {
@@ -599,6 +1006,7 @@ class MinecraftLauncher {
 
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
+                logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
 
                 // Добавляем LWJGL библиотеки к существующему module path
                 const currentModulePath = jvmArgs[modulepathIndex + 1];
@@ -607,19 +1015,268 @@ class MinecraftLauncher {
 
                 console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
+                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
               }
             }
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
+            logStream.write(`[FORGE] ✗ Error reading file: ${err.message}\n`);
           }
         } else {
           console.warn(`⚠️  Файл ${argsFileName} не найден: ${argsFilePath}`);
-          console.warn(`   Forge 1.17+ требует этот файл для запуска!`);
-        }
+          console.warn(`   Пытаемся скачать...`);
+          logStream.write(`[FORGE] ✗ File NOT found: ${argsFilePath}\n`);
+          logStream.write(`[FORGE] Attempting to download...\n`);
+
+          let downloadSuccessful = false;
+
+          try {
+            const axios = require('axios');
+            const argsUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${forgeFullVersion}/${argsFileName}`;
+            console.log(`[FORGE] Скачивание с: ${argsUrl}`);
+            logStream.write(`[FORGE] Downloading from: ${argsUrl}\n`);
+
+            const response = await axios.get(argsUrl, { responseType: 'text', timeout: 10000 });
+
+            // Создаём директорию если не существует
+            await fs.ensureDir(path.dirname(argsFilePath));
+            await fs.writeFile(argsFilePath, response.data, 'utf8');
+
+            console.log(`✓ ${argsFileName} успешно скачан!`);
+            logStream.write(`[FORGE] ✓ Downloaded successfully!\n`);
+
+            // Теперь парсим скачанный файл
+            const forgeArgsContent = response.data;
+            console.log(`✓ Содержимое ${argsFileName}:`);
+            console.log(forgeArgsContent.substring(0, 500));
+            logStream.write(`[FORGE] Content (first 500 chars):\n${forgeArgsContent.substring(0, 500)}\n`);
+
+            const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
+            console.log(`\n✓ Распарсено ${forgeArgsParsed.length} Forge arguments`);
+            logStream.write(`[FORGE] Parsed ${forgeArgsParsed.length} arguments\n`);
+
+            // win_args.txt содержит: <jvm_args> <main_class> <program_args>
+            let hitMainClass = false;
+            let prevWasFlag = false;
+
+            forgeArgsParsed.forEach((arg, idx) => {
+              // Проверяем не дошли ли до main class или program args
+              if (hitMainClass) return;
+
+              if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at main class: ${arg}`);
+                return;
+              }
+
+              if (arg.startsWith('--') && !arg.startsWith('--add-') && !prevWasFlag) {
+                hitMainClass = true;
+                console.log(`[FORGE] Stopping at program arg: ${arg}`);
+                return;
+              }
+
+              prevWasFlag = (arg === '-p' || arg === '-cp' || arg === '-classpath');
+              let processedArg = arg;
+
+              // КРИТИЧНО: Сначала проверяем специальные -D параметры (они могут не содержать libraries/ с слешем!)
+              if (arg.startsWith('-DlibraryDirectory=')) {
+                const eqIndex = arg.indexOf('=');
+                const paramValue = arg.substring(eqIndex + 1);
+                // Если значение "libraries" (без слеша!) - заменяем на абсолютный путь
+                if (paramValue === 'libraries' || paramValue === 'libraries/' || paramValue === 'libraries\\') {
+                  processedArg = '-DlibraryDirectory=' + this.librariesDir;
+                  console.log(`[FORGE] Fixed libraryDirectory: ${paramValue} -> ${this.librariesDir}`);
+                  logStream.write(`[FORGE] Arg[${idx}] FIXED libraryDirectory: ${arg} -> ${processedArg}\n`);
+                }
+              }
+              // Специальная обработка для -DignoreList (не конвертируем пути)
+              else if (arg.startsWith('-DignoreList=')) {
+                processedArg = arg;
+              }
+              // Проверяем содержит ли аргумент относительные пути libraries/
+              else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+                const convertPath = (p) => {
+                  if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
+                    let relativePath = p.replace(/^libraries[\/\\]/, '');
+
+                    // Заменяем server на client для путей Minecraft (для клиентского запуска)
+                    if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
+                      relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
+                      relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
+                      console.log(`[PATH] Converted server->client: ${p} -> libraries/${relativePath}`);
+                    }
+
+                    const normalizedPath = relativePath.split('/').join(path.sep);
+                    return path.join(this.librariesDir, normalizedPath);
+                  }
+                  return p;
+                };
+
+                // -D параметр с путями
+                if (arg.includes('=')) {
+                  const eqIndex = arg.indexOf('=');
+                  const paramName = arg.substring(0, eqIndex + 1);
+                  const paramValue = arg.substring(eqIndex + 1);
+
+                  // Обычная обработка путей для -D параметров с libraries/
+                  if (paramValue.includes(';') || paramValue.includes(':')) {
+                    const separator = paramValue.includes(';') ? ';' : ':';
+                    const paths = paramValue.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = paramName + convertedPaths.join(path.delimiter);
+                    if (idx < 5) {
+                      logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}...\n`);
+                    }
+                  } else {
+                    processedArg = paramName + convertPath(paramValue);
+                    if (idx < 5) {
+                      logStream.write(`[FORGE] Arg[${idx}] converted (-D param): ${arg.substring(0, 100)}...\n`);
+                    }
+                  }
+                }
+                // Обычный аргумент
+                else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+                  if (arg.includes(';') || arg.includes(':')) {
+                    const separator = arg.includes(';') ? ';' : ':';
+                    const paths = arg.split(separator);
+                    const convertedPaths = paths.map(convertPath);
+                    processedArg = convertedPaths.join(path.delimiter);
+                  } else {
+                    processedArg = convertPath(arg);
+                  }
+                  if (idx < 5) {
+                    logStream.write(`[FORGE] Arg[${idx}] converted: ${arg.substring(0, 200)}...\n`);
+                  }
+                }
+              }
+              jvmArgs.push(processedArg);
+            });
+
+            console.log(`✓ Добавлено ${forgeArgsParsed.length} Forge JVM arguments из скачанного ${argsFileName}`);
+            logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from downloaded file\n`);
+            downloadSuccessful = true;
+            forgeArgsLoaded = true; // Успешно загрузили из скачанного файла
+
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path для модов типа Embeddium
+            // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
+            const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
+            if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
+              console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
+              logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
+
+              // Находим все LWJGL библиотеки в classpath (используем libraries, т.к. filteredLibraries еще не создан)
+              const lwjglLibs = libraries.filter(lib => {
+                const libName = path.basename(lib);
+                return libName.startsWith('lwjgl-') && !libName.includes('-natives-');
+              });
+
+              if (lwjglLibs.length > 0) {
+                console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
+                logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
+
+                // Добавляем LWJGL библиотеки к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndex + 1];
+                const lwjglPaths = lwjglLibs.join(separator);
+                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + lwjglPaths;
+
+                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
+                lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
+                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
+              }
+            }
+
+          } catch (downloadErr) {
+            console.error(`❌ Не удалось скачать ${argsFileName}: ${downloadErr.message}`);
+            logStream.write(`[FORGE] ✗ Download failed: ${downloadErr.message}\n`);
+          }
+
+          // Если скачивание не удалось - используем fallback
+          if (!downloadSuccessful) {
+            console.warn(`   Создаю минимальные аргументы для запуска...`);
+            logStream.write(`[FORGE] Creating fallback configuration...\n`);
+
+            // Добавляем essential args как fallback
+            essentialForgeArgs.forEach(arg => jvmArgs.push(arg));
+            console.log(`✓ Добавлено ${essentialForgeArgs.length} fallback Forge аргументов`);
+            logStream.write(`[FORGE] Added ${essentialForgeArgs.length} essential args as fallback\n`);
+
+            // Строим module path вручную для критичных библиотек Forge 1.17+
+          const forgeModuleLibs = [
+            // КРИТИЧЕСКИ ВАЖНО: fmlloader предоставляет BootstrapLaunchConsumer!
+            'net/minecraftforge/fmlloader',
+            'net/minecraftforge/fmlcore',
+            'net/minecraftforge/javafmllanguage',
+            'net/minecraftforge/lowcodelanguage',
+            'net/minecraftforge/mclanguage',
+            // Bootstrap и вспомогательные
+            'cpw/mods/bootstraplauncher',
+            'cpw/mods/securejarhandler',
+            // ASM для трансформации байткода
+            'org/ow2/asm/asm',
+            'org/ow2/asm/asm-commons',
+            'org/ow2/asm/asm-tree',
+            'org/ow2/asm/asm-util',
+            'org/ow2/asm/asm-analysis',
+            // Forge SPI
+            'net/minecraftforge/forgespi'
+          ];
+
+          const modulePaths = [];
+          for (const lib of forgeModuleLibs) {
+            const libDir = path.join(this.librariesDir, lib.split('/').join(path.sep));
+            if (fs.existsSync(libDir)) {
+              // Находим JAR файл в директории (может быть любая версия)
+              const files = fs.readdirSync(libDir);
+              for (const file of files) {
+                const filePath = path.join(libDir, file);
+                const stat = fs.statSync(filePath);
+                if (stat.isDirectory()) {
+                  // Ищем JAR в поддиректориях версий
+                  const versionFiles = fs.readdirSync(filePath);
+                  for (const vf of versionFiles) {
+                    if (vf.endsWith('.jar')) {
+                      modulePaths.push(path.join(filePath, vf));
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          if (modulePaths.length > 0) {
+            const separator = process.platform === 'win32' ? ';' : ':';
+            jvmArgs.push('-p');
+            jvmArgs.push(modulePaths.join(separator));
+            console.log(`✓ Построен module path: ${modulePaths.length} библиотек`);
+            logStream.write(`[FORGE] ✓ Built module path: ${modulePaths.length} libraries\n`);
+            modulePaths.forEach((p, idx) => {
+              logStream.write(`[FORGE]   [${idx}] ${p}\n`);
+            });
+          } else {
+            console.error(`❌ Не найдены библиотеки для module path! Forge может не запуститься.`);
+            logStream.write(`[FORGE] ✗ ERROR: No libraries found for module path!\n`);
+          }
+
+          // Добавляем --add-modules для активации всех модулей
+          jvmArgs.push('--add-modules', 'ALL-MODULE-PATH');
+          logStream.write(`[FORGE] Added --add-modules ALL-MODULE-PATH\n`);
+
+          // Добавляем legacyClassPath для остальных библиотек
+          // (будет добавлено позже после формирования полного classpath)
+          console.log(`⚠️  legacyClassPath будет добавлен автоматически через переменные`);
+          logStream.write(`[FORGE] legacyClassPath will be added later\n`);
+
+          console.log(`✓ Fallback конфигурация для Forge 1.17+ создана`);
+          logStream.write(`[FORGE] ✓ Fallback configuration created\n`);
+          } // end if (!downloadSuccessful)
+        } // end else (file not found)
+      } else {
+        logStream.write(`[FORGE_CHECK] NOT Forge - skipping Forge configuration\n`);
       }
 
       // Аргументы из версии (если есть)
-      if (versionData.arguments && versionData.arguments.jvm) {
+      // Пропускаем для Forge если уже загрузили из win_args.txt (чтобы избежать дублирования)
+      if (versionData.arguments && versionData.arguments.jvm && !forgeArgsLoaded) {
         let addedCount = 0;
         let skippedCount = 0;
 
@@ -737,11 +1394,38 @@ class MinecraftLauncher {
       logStream.write('\n=== ПОДГОТОВКА ЗАПУСКА ===\n');
 
       // separator уже определён выше на строке 244!
-      const classpathFinal = filteredLibraries.join(separator);
+      // ВАЖНО: Используем finalLibraries (уже без модульных библиотек для Forge)
+      const classpathFinal = finalLibraries.join(separator);
+      logStream.write(`[CLASSPATH] Building final classpath from ${finalLibraries.length} libraries\n`);
 
-      console.log(`Classpath: ${filteredLibraries.length} JAR файлов`);
+      // Для Forge 1.17+: добавляем legacyClassPath если его ещё нет
+      // КРИТИЧНО: Исключаем библиотеки которые уже в module path!
+      if (versionId.includes('forge') && !jvmArgs.some(arg => arg.includes('legacyClassPath'))) {
+        logStream.write(`[FORGE] Adding legacyClassPath for Forge...\n`);
+
+        // Список библиотек которые НЕ должны быть в legacyClassPath (они в module path)
+        const modulePathLibs = [
+          'bootstraplauncher',
+          'securejarhandler',
+          'asm-9.3.jar',
+          'asm-commons',
+          'asm-tree',
+          'asm-util',
+          'asm-analysis',
+          'forgespi'
+        ];
+
+        // ВАЖНО: finalLibraries уже без модульных библиотек!
+        // legacyClassPath должен совпадать с основным classpath
+        const legacyClassPath = finalLibraries.join(separator);
+        jvmArgs.push(`-DlegacyClassPath=${legacyClassPath}`);
+        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${finalLibraries.length} библиотек, ${legacyClassPath.length} символов)`);
+        logStream.write(`[INFO] legacyClassPath: ${finalLibraries.length} libraries, ${legacyClassPath.length} chars\n`);
+      }
+
+      console.log(`Classpath: ${finalLibraries.length} JAR файлов`);
       console.log(`Длина classpath: ${classpathFinal.length} символов`);
-      logStream.write(`[CLASSPATH] ${filteredLibraries.length} JARs, ${classpathFinal.length} chars\n`);
+      logStream.write(`[CLASSPATH] ${finalLibraries.length} JARs, ${classpathFinal.length} chars\n`);
       const jvmArgsNoCp = jvmArgs.filter((arg, i) => {
         if (arg === '-cp') return false;
         if (i > 0 && jvmArgs[i-1] === '-cp') return false;
@@ -761,7 +1445,7 @@ class MinecraftLauncher {
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
       console.log('Метод: Прямая передача через spawn()');
       console.log('JVM аргументов:', jvmArgsNoCp.length);
-      console.log('Classpath entries:', filteredLibraries.length);
+      console.log('Classpath entries:', finalLibraries.length);
       console.log('Main class:', mainClass);
       console.log('Game аргументов:', gameArgs.length);
       console.log('RAM выделено:', memory, 'MB');
@@ -770,12 +1454,12 @@ class MinecraftLauncher {
       // Записываем полную команду запуска в лог
       logStream.write('\n=== ИСПОЛЬЗУЕТСЯ ПРЯМОЙ ЗАПУСК (spawn) ===\n');
       logStream.write(`Main class: ${mainClass}\n`);
-      logStream.write(`Classpath entries: ${filteredLibraries.length}\n`);
+      logStream.write(`Classpath entries: ${finalLibraries.length}\n`);
       logStream.write(`Classpath length: ${classpathFinal.length} chars\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgsNoCp.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
-      logStream.write(`\n[CLASSPATH] ${filteredLibraries.length} JARs:\n`);
-      filteredLibraries.forEach((jar, i) => {
+      logStream.write(`\n[CLASSPATH] ${finalLibraries.length} JARs:\n`);
+      finalLibraries.forEach((jar, i) => {
         logStream.write(`  [${i}] ${path.basename(jar)}\n`);
       });
       logStream.write('\nGAME ARGS:\n');
@@ -796,7 +1480,7 @@ echo.
 echo Working directory: ${gameDir}
 echo Java: ${javaPath}
 echo Main class: ${mainClass}
-echo Classpath JARs: ${filteredLibraries.length}
+echo Classpath JARs: ${finalLibraries.length}
 echo.
 echo Press ENTER to start Minecraft...
 pause >nul

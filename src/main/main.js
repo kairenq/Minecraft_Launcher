@@ -250,6 +250,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
         javaDownloader.download(
           (progress) => {
             mainWindow.webContents.send('download-progress', {
+              modpackId: modpackId,
               type: 'java',
               stage: progress.stage || 'Загрузка Java',
               percent: progress.percent || 0
@@ -276,6 +277,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
           modpack.minecraftVersion,
           (progress) => {
             mainWindow.webContents.send('download-progress', {
+              modpackId: modpackId,
               type: 'minecraft',
               version: modpack.minecraftVersion,
               stage: progress.stage || 'Загрузка Minecraft',
@@ -303,6 +305,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
         modpack.modLoaderVersion,
         (progress) => {
           mainWindow.webContents.send('download-progress', {
+            modpackId: modpackId,
             type: 'modloader',
             modLoader: modpack.modLoader,
             stage: progress.stage || 'Установка модлоадера',
@@ -330,6 +333,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
         instanceDir,
         (progress) => {
           mainWindow.webContents.send('download-progress', {
+            modpackId: modpackId,
             type: 'archive',
             stage: progress.stage || 'Загрузка архива сборки',
             percent: progress.percent || 0
@@ -353,6 +357,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
         instanceDir,
         (progress) => {
           mainWindow.webContents.send('download-progress', {
+            modpackId: modpackId,
             type: 'mods',
             stage: progress.stage || 'Загрузка модов',
             percent: progress.percent || 0

@@ -998,11 +998,12 @@ class MinecraftLauncher {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
               logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
 
-              // Находим все LWJGL библиотеки в classpath (используем libraries, т.к. filteredLibraries еще не создан)
-              const lwjglLibs = libraries.filter(lib => {
+              // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
+              const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
                 const libName = path.basename(lib);
                 return libName.startsWith('lwjgl-') && !libName.includes('-natives-');
               });
+              const lwjglLibs = uniqueLwjglLibs;
 
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
@@ -1164,11 +1165,12 @@ class MinecraftLauncher {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
               logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
 
-              // Находим все LWJGL библиотеки в classpath (используем libraries, т.к. filteredLibraries еще не создан)
-              const lwjglLibs = libraries.filter(lib => {
+              // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
+              const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
                 const libName = path.basename(lib);
                 return libName.startsWith('lwjgl-') && !libName.includes('-natives-');
               });
+              const lwjglLibs = uniqueLwjglLibs;
 
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);

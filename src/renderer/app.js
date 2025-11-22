@@ -441,6 +441,11 @@ async function installModpack(modpack) {
   try {
     // Обработчик единого прогресса
     const progressHandler = (event, data) => {
+      // ВАЖНО: Обновляем прогресс только для текущей сборки!
+      if (data.modpackId && data.modpackId !== modpack.id) {
+        return; // Игнорируем события для других сборок
+      }
+
       if (data.stage) {
         currentStage = data.stage;
         stageProgress = data.percent || 0;
@@ -456,6 +461,11 @@ async function installModpack(modpack) {
 
     ipcRenderer.on('download-progress', progressHandler);
     ipcRenderer.on('install-status', (event, data) => {
+      // ВАЖНО: Обновляем статус только для текущей сборки!
+      if (data.modpackId && data.modpackId !== modpack.id) {
+        return; // Игнорируем события для других сборок
+      }
+
       if (data.status === 'downloading-java') {
         btnProgressText.textContent = 'Java...';
       } else if (data.status === 'downloading-minecraft') {

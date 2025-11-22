@@ -23,6 +23,17 @@ class ConfigManager {
         installed: false,
         archiveUrl: 'https://github.com/kairenq/Minecraft_Launcher/releases/download/v1.1.3/Draconica1.1.3.zip',
         mods: []
+      },
+      {
+        id: 'skydustry-1-20-1',
+        name: 'Skydustry',
+        description: 'Тестовая сборка Minecraft 1.20.1 с модами на Forge. Индустриальная сборка с акцентом на автоматизацию, технологии и строительство. Создавайте сложные производственные цепочки, автоматизируйте процессы и стройте масштабные заводы!',
+        minecraftVersion: '1.20.1',
+        modLoader: 'forge',
+        modLoaderVersion: null,
+        installed: false,
+        archiveUrl: 'https://github.com/kairenq/Minecraft_Launcher/releases/download/v.1.0.0/Skydustry.zip',
+        mods: []
       }
     ];
   }

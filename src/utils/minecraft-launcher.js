@@ -1001,12 +1001,13 @@ class MinecraftLauncher {
             logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
             forgeArgsLoaded = true; // Успешно загрузили из win_args.txt
 
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path для модов типа Embeddium
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL и главный Minecraft JAR в module path
             // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
+            // Minecraft JAR должен быть загружен как автоматический модуль для правильной работы Forge
             const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
             if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
-              logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
+              logStream.write('[FORGE] Adding LWJGL and Minecraft JAR to module path...\n');
 
               // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
               const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
@@ -1015,18 +1016,37 @@ class MinecraftLauncher {
               });
               const lwjglLibs = uniqueLwjglLibs;
 
+              // Определяем путь к главному Minecraft JAR
+              const baseVersion = versionData.inheritsFrom || version;
+              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+
+              const additionalModules = [];
+
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
                 logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
-
-                // Добавляем LWJGL библиотеки к существующему module path
-                const currentModulePath = jvmArgs[modulepathIndex + 1];
-                const lwjglPaths = lwjglLibs.join(separator);
-                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + lwjglPaths;
-
-                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
+                additionalModules.push(...lwjglLibs);
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
-                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
+              }
+
+              // КРИТИЧЕСКИ ВАЖНО: Добавляем главный Minecraft JAR в module path как автоматический модуль
+              if (fs.existsSync(mainJarPath)) {
+                additionalModules.push(mainJarPath);
+                console.log(`✓ Добавление главного Minecraft JAR в module path: ${baseVersion}.jar`);
+                logStream.write(`[FORGE] ✓ Adding main JAR to module path: ${mainJarPath}\n`);
+              } else {
+                console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
+                logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
+              }
+
+              if (additionalModules.length > 0) {
+                // Добавляем все модули к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndex + 1];
+                const additionalPaths = additionalModules.join(separator);
+                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + additionalPaths;
+
+                console.log(`✓ Добавлено ${additionalModules.length} модулей в module path`);
+                logStream.write(`[FORGE] ✓ Added ${additionalModules.length} modules to module path\n`);
               }
             }
 
@@ -1213,12 +1233,13 @@ class MinecraftLauncher {
             downloadSuccessful = true;
             forgeArgsLoaded = true; // Успешно загрузили из скачанного файла
 
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path для модов типа Embeddium
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL и главный Minecraft JAR в module path
             // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
-            const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
-            if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
+            // Minecraft JAR должен быть загружен как автоматический модуль для правильной работы Forge
+            const modulepathIndexDownloaded = jvmArgs.findIndex(arg => arg === '-p');
+            if (modulepathIndexDownloaded !== -1 && jvmArgs[modulepathIndexDownloaded + 1]) {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
-              logStream.write('[FORGE] Adding LWJGL to module path for Embeddium compatibility...\n');
+              logStream.write('[FORGE] Adding LWJGL and Minecraft JAR to module path...\n');
 
               // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
               const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
@@ -1227,18 +1248,37 @@ class MinecraftLauncher {
               });
               const lwjglLibs = uniqueLwjglLibs;
 
+              // Определяем путь к главному Minecraft JAR
+              const baseVersion = versionData.inheritsFrom || version;
+              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+
+              const additionalModules = [];
+
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
                 logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
-
-                // Добавляем LWJGL библиотеки к существующему module path
-                const currentModulePath = jvmArgs[modulepathIndex + 1];
-                const lwjglPaths = lwjglLibs.join(separator);
-                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + lwjglPaths;
-
-                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
+                additionalModules.push(...lwjglLibs);
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
-                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
+              }
+
+              // КРИТИЧЕСКИ ВАЖНО: Добавляем главный Minecraft JAR в module path как автоматический модуль
+              if (fs.existsSync(mainJarPath)) {
+                additionalModules.push(mainJarPath);
+                console.log(`✓ Добавление главного Minecraft JAR в module path: ${baseVersion}.jar`);
+                logStream.write(`[FORGE] ✓ Adding main JAR to module path: ${mainJarPath}\n`);
+              } else {
+                console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
+                logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
+              }
+
+              if (additionalModules.length > 0) {
+                // Добавляем все модули к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndexDownloaded + 1];
+                const additionalPaths = additionalModules.join(separator);
+                jvmArgs[modulepathIndexDownloaded + 1] = currentModulePath + separator + additionalPaths;
+
+                console.log(`✓ Добавлено ${additionalModules.length} модулей в module path`);
+                logStream.write(`[FORGE] ✓ Added ${additionalModules.length} modules to module path\n`);
               }
             }
 

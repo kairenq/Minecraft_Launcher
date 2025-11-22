@@ -760,9 +760,9 @@ class MinecraftLauncher {
           'lwjgl-opengl',
           'lwjgl-glfw',
           'lwjgl-stb',
-          'lwjgl-tinyfd',
-          // Основной JAR Minecraft (обрабатывается через legacyClassPath!)
-          `${version}.jar`
+          'lwjgl-tinyfd'
+          // ВАЖНО: Главный Minecraft JAR (${version}.jar) НЕ исключается из classpath!
+          // Он должен быть И в classpath, И в legacyClassPath для правильной работы Forge
         ];
 
         finalLibraries = uniqueLibraries.filter(lib => {

@@ -1029,6 +1029,51 @@ class MinecraftLauncher {
                 logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
               }
             }
+
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем главный Minecraft JAR в legacyClassPath
+            // Главный JAR исключён из classpath (правильно), но должен быть в legacyClassPath!
+            console.log('\n>>> FORGE: Добавление главного Minecraft JAR в legacyClassPath...');
+            logStream.write('[FORGE] Adding main Minecraft JAR to legacyClassPath...\n');
+
+            // Находим индекс аргумента legacyClassPath
+            const legacyClassPathIndex = jvmArgs.findIndex(arg => arg.startsWith('-DlegacyClassPath='));
+            if (legacyClassPathIndex !== -1) {
+              const legacyClassPathArg = jvmArgs[legacyClassPathIndex];
+              const legacyClassPathValue = legacyClassPathArg.substring('-DlegacyClassPath='.length);
+
+              // Определяем путь к главному Minecraft JAR
+              // Для Forge используем inheritsFrom (базовая версия, например 1.18.2)
+              const baseVersion = versionData.inheritsFrom || version;
+              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+
+              console.log(`>>> Главный JAR: ${mainJarPath}`);
+              logStream.write(`[FORGE] Main JAR: ${mainJarPath}\n`);
+
+              // Проверяем существует ли файл
+              if (fs.existsSync(mainJarPath)) {
+                // Проверяем не содержит ли legacyClassPath уже этот JAR
+                const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
+                const alreadyHasMainJar = pathsInLegacy.some(p => p.includes(baseVersion + '.jar'));
+
+                if (!alreadyHasMainJar) {
+                  // Добавляем главный JAR в НАЧАЛО legacyClassPath (важно для приоритета загрузки)
+                  const newLegacyClassPath = mainJarPath + path.delimiter + legacyClassPathValue;
+                  jvmArgs[legacyClassPathIndex] = `-DlegacyClassPath=${newLegacyClassPath}`;
+
+                  console.log(`✓ Добавлен главный Minecraft JAR в legacyClassPath: ${baseVersion}.jar`);
+                  logStream.write(`[FORGE] ✓ Added main JAR to legacyClassPath: ${baseVersion}.jar\n`);
+                } else {
+                  console.log(`✓ Главный JAR уже в legacyClassPath`);
+                  logStream.write(`[FORGE] ✓ Main JAR already in legacyClassPath\n`);
+                }
+              } else {
+                console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
+                logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
+              }
+            } else {
+              console.log(`⚠️  legacyClassPath не найден в win_args.txt`);
+              logStream.write(`[FORGE] ✗ legacyClassPath not found in win_args.txt\n`);
+            }
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
             logStream.write(`[FORGE] ✗ Error reading file: ${err.message}\n`);
@@ -1427,12 +1472,27 @@ class MinecraftLauncher {
           'forgespi'
         ];
 
-        // ВАЖНО: finalLibraries уже без модульных библиотек!
-        // legacyClassPath должен совпадать с основным classpath
-        const legacyClassPath = finalLibraries.join(separator);
+        // ВАЖНО: finalLibraries уже без модульных библиотек и без главного JAR!
+        // Но legacyClassPath ДОЛЖЕН содержать главный Minecraft JAR!
+        const legacyLibraries = [...finalLibraries];
+
+        // Добавляем главный Minecraft JAR в legacyClassPath
+        const baseVersion = versionData.inheritsFrom || version;
+        const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+        if (fs.existsSync(mainJarPath)) {
+          // Добавляем в НАЧАЛО для приоритета загрузки
+          legacyLibraries.unshift(mainJarPath);
+          console.log(`✓ Добавлен главный Minecraft JAR в legacyClassPath: ${baseVersion}.jar`);
+          logStream.write(`[FORGE] Added main JAR to legacyClassPath: ${baseVersion}.jar\n`);
+        } else {
+          console.warn(`⚠️  Главный JAR не найден для legacyClassPath: ${mainJarPath}`);
+          logStream.write(`[FORGE] ✗ Main JAR not found for legacyClassPath: ${mainJarPath}\n`);
+        }
+
+        const legacyClassPath = legacyLibraries.join(separator);
         jvmArgs.push(`-DlegacyClassPath=${legacyClassPath}`);
-        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${finalLibraries.length} библиотек, ${legacyClassPath.length} символов)`);
-        logStream.write(`[INFO] legacyClassPath: ${finalLibraries.length} libraries, ${legacyClassPath.length} chars\n`);
+        console.log(`✓ Добавлен -DlegacyClassPath для Forge (${legacyLibraries.length} библиотек, ${legacyClassPath.length} символов)`);
+        logStream.write(`[INFO] legacyClassPath: ${legacyLibraries.length} libraries, ${legacyClassPath.length} chars\n`);
       }
 
       console.log(`Classpath: ${finalLibraries.length} JAR файлов`);

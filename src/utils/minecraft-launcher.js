@@ -1053,7 +1053,33 @@ class MinecraftLauncher {
 
               // Определяем путь к главному Minecraft JAR
               const baseVersion = versionData.inheritsFrom || version;
-              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+
+              // КРИТИЧНО: Для Forge нужен ДЕОБФУСЦИРОВАННЫЙ JAR, не обфусцированный!
+              // Ищем client-VERSION-TIMESTAMP.jar в legacyClassPath
+              let mainJarPath = null;
+              const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
+
+              // Сначала ищем client-VERSION.jar в libraries (деобфусцированный)
+              const clientJarPattern = new RegExp(`client-${baseVersion.replace(/\./g, '\\.')}-\\d+-extra\\.jar`);
+              for (const p of pathsInLegacy) {
+                if (clientJarPattern.test(p)) {
+                  // Нашли -extra.jar, значит рядом должен быть основной client-VERSION.jar
+                  const clientJar = p.replace('-extra.jar', '.jar');
+                  if (fs.existsSync(clientJar)) {
+                    mainJarPath = clientJar;
+                    console.log(`>>> Найден деобфусцированный клиент: ${path.basename(clientJar)}`);
+                    logStream.write(`[FORGE] Found deobfuscated client: ${clientJar}\n`);
+                    break;
+                  }
+                }
+              }
+
+              // Если не нашли деобфусцированный, используем обфусцированный
+              if (!mainJarPath) {
+                mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+                console.log(`>>> Используем обфусцированный клиент: ${baseVersion}.jar`);
+                logStream.write(`[FORGE] Using obfuscated client: ${mainJarPath}\n`);
+              }
 
               console.log(`>>> Главный JAR: ${mainJarPath}`);
               console.log(`>>> legacyClassPath (первые 300 символов): ${legacyClassPathValue.substring(0, 300)}...`);
@@ -1061,27 +1087,11 @@ class MinecraftLauncher {
               logStream.write(`[FORGE] legacyClassPath content (first 500 chars): ${legacyClassPathValue.substring(0, 500)}...\n`);
 
               // Проверяем существует ли главный JAR
-              if (fs.existsSync(mainJarPath)) {
+              if (mainJarPath && fs.existsSync(mainJarPath)) {
                 // Проверяем содержит ли legacyClassPath главный JAR
                 // ВАЖНО: Не путать с client-VERSION-extra.jar!
-                const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
-                const hasMainJar = pathsInLegacy.some(p => {
-                  // Проверяем точное совпадение пути к главному JAR
-                  if (p === mainJarPath) return true;
-
-                  // Проверяем паттерн versions/VERSION/VERSION.jar
-                  if (p.endsWith(`\\${baseVersion}\\${baseVersion}.jar`) ||
-                      p.endsWith(`/${baseVersion}/${baseVersion}.jar`)) return true;
-
-                  // НЕ считаем -extra.jar главным JAR!
-                  if (p.includes('-extra.jar')) return false;
-
-                  // Проверяем client-VERSION.jar (БЕЗ -extra)
-                  const basename = path.basename(p);
-                  if (basename === `client-${baseVersion}.jar`) return true;
-
-                  return false;
-                });
+                // Простая проверка: есть ли точно такой путь в legacyClassPath
+                const hasMainJar = pathsInLegacy.includes(mainJarPath);
 
                 if (!hasMainJar) {
                   // КРИТИЧНО: Главный JAR отсутствует в legacyClassPath - добавляем!

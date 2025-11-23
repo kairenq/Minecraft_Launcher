@@ -1065,7 +1065,55 @@ class MinecraftLauncher {
                 if (clientJarPattern.test(p)) {
                   // Нашли -extra.jar, значит рядом должен быть основной client-VERSION.jar
                   const clientJar = p.replace('-extra.jar', '.jar');
-                  if (fs.existsSync(clientJar)) {
+
+                  // КРИТИЧНО: Проверяем размер файлов - если меньше 1 МБ, они повреждены!
+                  const extraJarSize = fs.existsSync(p) ? fs.statSync(p).size : 0;
+                  const clientJarSize = fs.existsSync(clientJar) ? fs.statSync(clientJar).size : 0;
+
+                  console.log(`>>> Проверка client JAR: ${path.basename(clientJar)}`);
+                  console.log(`>>> Size: ${clientJarSize} bytes (${(clientJarSize / 1024 / 1024).toFixed(2)} MB)`);
+                  console.log(`>>> Extra size: ${extraJarSize} bytes (${(extraJarSize / 1024).toFixed(2)} KB)`);
+
+                  // Если основной JAR не существует или меньше 1 МБ - поврежден
+                  if (clientJarSize < 1024 * 1024) {
+                    console.log(`⚠️  Client JAR отсутствует или поврежден (< 1 MB)`);
+
+                    // Пытаемся скачать из Maven
+                    const match = path.basename(clientJar).match(/client-(\d+\.\d+(?:\.\d+)?)-(\d+)\.jar/);
+                    if (match) {
+                      const mcVersion = match[1];
+                      const timestamp = match[2];
+                      const mavenUrl = `https://maven.minecraftforge.net/net/minecraft/client/${mcVersion}-${timestamp}/client-${mcVersion}-${timestamp}.jar`;
+
+                      console.log(`>>> Скачивание из Maven: ${mavenUrl}`);
+                      logStream.write(`[FORGE] Downloading deobfuscated client from ${mavenUrl}\n`);
+
+                      try {
+                        const https = require('https');
+                        await new Promise((resolve, reject) => {
+                          const file = fs.createWriteStream(clientJar);
+                          https.get(mavenUrl, (response) => {
+                            if (response.statusCode === 200) {
+                              response.pipe(file);
+                              file.on('finish', () => {
+                                file.close();
+                                console.log(`✓ Скачан: ${path.basename(clientJar)} (${fs.statSync(clientJar).size} bytes)`);
+                                resolve();
+                              });
+                            } else {
+                              reject(new Error(`HTTP ${response.statusCode}`));
+                            }
+                          }).on('error', reject);
+                        });
+                      } catch (err) {
+                        console.error(`✗ Ошибка скачивания: ${err.message}`);
+                        logStream.write(`[FORGE] ✗ Download failed: ${err.message}\n`);
+                      }
+                    }
+                  }
+
+                  // Проверяем снова после скачивания
+                  if (fs.existsSync(clientJar) && fs.statSync(clientJar).size > 1024 * 1024) {
                     mainJarPath = clientJar;
                     console.log(`>>> Найден деобфусцированный клиент: ${path.basename(clientJar)}`);
                     logStream.write(`[FORGE] Found deobfuscated client: ${clientJar}\n`);
@@ -1081,21 +1129,47 @@ class MinecraftLauncher {
                 logStream.write(`[FORGE] Using obfuscated client: ${mainJarPath}\n`);
               }
 
+              // КРИТИЧНО: Удаляем поврежденные JAR файлы из legacyClassPath (размер < 10 КБ)
+              console.log('\n>>> Очистка legacyClassPath от поврежденных файлов...');
+              const cleanedPaths = pathsInLegacy.filter(p => {
+                if (!fs.existsSync(p)) return true; // Несуществующие пропускаем (могут скачаться позже)
+
+                const size = fs.statSync(p).size;
+                const basename = path.basename(p);
+
+                // Если JAR меньше 10 КБ - явно поврежден
+                if (basename.endsWith('.jar') && size < 10 * 1024) {
+                  console.log(`⚠️  Исключен поврежденный: ${basename} (${size} bytes)`);
+                  logStream.write(`[FORGE] Excluded corrupted JAR: ${basename} (${size} bytes)\n`);
+                  return false;
+                }
+
+                return true;
+              });
+
+              if (cleanedPaths.length !== pathsInLegacy.length) {
+                // Обновляем legacyClassPath
+                const cleanedLegacyClassPath = cleanedPaths.join(path.delimiter);
+                jvmArgs[legacyClassPathIndex] = `-DlegacyClassPath=${cleanedLegacyClassPath}`;
+                console.log(`✓ Удалено ${pathsInLegacy.length - cleanedPaths.length} поврежденных JAR из legacyClassPath`);
+                logStream.write(`[FORGE] Removed ${pathsInLegacy.length - cleanedPaths.length} corrupted JARs from legacyClassPath\n`);
+              }
+
               console.log(`>>> Главный JAR: ${mainJarPath}`);
-              console.log(`>>> legacyClassPath (первые 300 символов): ${legacyClassPathValue.substring(0, 300)}...`);
+              console.log(`>>> legacyClassPath (первые 300 символов): ${cleanedPaths.join(path.delimiter).substring(0, 300)}...`);
               logStream.write(`[FORGE] Main JAR path: ${mainJarPath}\n`);
-              logStream.write(`[FORGE] legacyClassPath content (first 500 chars): ${legacyClassPathValue.substring(0, 500)}...\n`);
+              logStream.write(`[FORGE] legacyClassPath content (first 500 chars): ${cleanedPaths.join(path.delimiter).substring(0, 500)}...\n`);
 
               // Проверяем существует ли главный JAR
               if (mainJarPath && fs.existsSync(mainJarPath)) {
                 // Проверяем содержит ли legacyClassPath главный JAR
                 // ВАЖНО: Не путать с client-VERSION-extra.jar!
                 // Простая проверка: есть ли точно такой путь в legacyClassPath
-                const hasMainJar = pathsInLegacy.includes(mainJarPath);
+                const hasMainJar = cleanedPaths.includes(mainJarPath);
 
                 if (!hasMainJar) {
                   // КРИТИЧНО: Главный JAR отсутствует в legacyClassPath - добавляем!
-                  const newLegacyClassPath = mainJarPath + path.delimiter + legacyClassPathValue;
+                  const newLegacyClassPath = mainJarPath + path.delimiter + cleanedPaths.join(path.delimiter);
                   jvmArgs[legacyClassPathIndex] = `-DlegacyClassPath=${newLegacyClassPath}`;
 
                   console.log(`⚠️  КРИТИЧНО: Главный JAR НЕ найден в legacyClassPath!`);

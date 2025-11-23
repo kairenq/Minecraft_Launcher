@@ -1001,13 +1001,13 @@ class MinecraftLauncher {
             logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
             forgeArgsLoaded = true; // Успешно загрузили из win_args.txt
 
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL и главный Minecraft JAR в module path
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path
             // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
-            // Forge использует Class.forName(Module, String) который ищет ТОЛЬКО в модулях!
+            // ВАЖНО: Главный Minecraft JAR добавляется через --patch-module (не в module path напрямую!)
             const modulepathIndex = jvmArgs.findIndex(arg => arg === '-p');
             if (modulepathIndex !== -1 && jvmArgs[modulepathIndex + 1]) {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
-              logStream.write('[FORGE] Adding LWJGL and Minecraft JAR to module path...\n');
+              logStream.write('[FORGE] Adding LWJGL to module path...\n');
 
               // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
               const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
@@ -1016,59 +1016,40 @@ class MinecraftLauncher {
               });
               const lwjglLibs = uniqueLwjglLibs;
 
-              const additionalModules = [];
-
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
                 logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
-                additionalModules.push(...lwjglLibs);
+
+                // Добавляем LWJGL библиотеки к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndex + 1];
+                const lwjglPaths = lwjglLibs.join(separator);
+                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + lwjglPaths;
+
+                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
+                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
               }
 
-              // КРИТИЧЕСКИ ВАЖНО: Создаём копию главного JAR с валидным именем модуля!
-              // Проблема: Forge использует Class.forName(Module, String) который ищет ТОЛЬКО в модулях
-              // Решение: Копируем 1.18.2.jar -> minecraft.client.jar (валидное имя модуля)
+              // КРИТИЧЕСКИ ВАЖНО: Используем --patch-module для добавления Minecraft классов
+              // Проблема: Minecraft JAR содержит классы в unnamed package (biq$i.class и т.д.)
+              // Решение: Вклеиваем JAR в модуль Forge через --patch-module
               const baseVersion = versionData.inheritsFrom || version;
               const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
-              const moduleJarPath = path.join(this.versionsDir, baseVersion, 'minecraft.client.jar');
 
               if (fs.existsSync(mainJarPath)) {
-                try {
-                  // Проверяем нужно ли создавать/обновлять копию
-                  let needsCopy = !fs.existsSync(moduleJarPath);
-                  if (!needsCopy) {
-                    const mainStat = fs.statSync(mainJarPath);
-                    const moduleStat = fs.statSync(moduleJarPath);
-                    needsCopy = mainStat.mtime > moduleStat.mtime; // Обновляем если оригинал новее
-                  }
+                // Добавляем --patch-module ПЕРЕД другими аргументами
+                // Вклеиваем Minecraft JAR в модуль cpw.mods.securejarhandler (основной модуль Forge)
+                const patchModuleArg = `--patch-module`;
+                const patchModuleValue = `cpw.mods.securejarhandler=${mainJarPath}`;
 
-                  if (needsCopy) {
-                    console.log(`>>> Создание модульной копии: ${path.basename(mainJarPath)} -> minecraft.client.jar`);
-                    logStream.write(`[FORGE] Creating module copy: ${path.basename(mainJarPath)} -> minecraft.client.jar\n`);
-                    fs.copyFileSync(mainJarPath, moduleJarPath);
-                  }
+                // Вставляем ПЕРЕД -p (module path)
+                jvmArgs.splice(modulepathIndex, 0, patchModuleArg, patchModuleValue);
 
-                  // Добавляем модульную копию в module path
-                  additionalModules.push(moduleJarPath);
-                  console.log(`✓ Добавление главного Minecraft JAR в module path: minecraft.client.jar`);
-                  logStream.write(`[FORGE] ✓ Adding main JAR to module path: minecraft.client.jar\n`);
-                } catch (copyErr) {
-                  console.error(`⚠️  Ошибка создания модульной копии: ${copyErr.message}`);
-                  logStream.write(`[FORGE] ✗ Error creating module copy: ${copyErr.message}\n`);
-                }
+                console.log(`✓ Добавлен --patch-module для главного Minecraft JAR`);
+                logStream.write(`[FORGE] ✓ Added --patch-module cpw.mods.securejarhandler=${path.basename(mainJarPath)}\n`);
               } else {
                 console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
                 logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
-              }
-
-              if (additionalModules.length > 0) {
-                // Добавляем все модули к существующему module path
-                const currentModulePath = jvmArgs[modulepathIndex + 1];
-                const additionalPaths = additionalModules.join(separator);
-                jvmArgs[modulepathIndex + 1] = currentModulePath + separator + additionalPaths;
-
-                console.log(`✓ Добавлено ${additionalModules.length} модулей в module path`);
-                logStream.write(`[FORGE] ✓ Added ${additionalModules.length} modules to module path\n`);
               }
             }
 
@@ -1255,13 +1236,13 @@ class MinecraftLauncher {
             downloadSuccessful = true;
             forgeArgsLoaded = true; // Успешно загрузили из скачанного файла
 
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL и главный Minecraft JAR в module path
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем LWJGL в module path
             // Embeddium пытается использовать org.lwjgl.system.Platform на ранней стадии загрузки
-            // Forge использует Class.forName(Module, String) который ищет ТОЛЬКО в модулях!
+            // ВАЖНО: Главный Minecraft JAR добавляется через --patch-module (не в module path напрямую!)
             const modulepathIndexDownloaded = jvmArgs.findIndex(arg => arg === '-p');
             if (modulepathIndexDownloaded !== -1 && jvmArgs[modulepathIndexDownloaded + 1]) {
               console.log('\n>>> FORGE: Исправление module path для совместимости с Embeddium/Sodium...');
-              logStream.write('[FORGE] Adding LWJGL and Minecraft JAR to module path...\n');
+              logStream.write('[FORGE] Adding LWJGL to module path...\n');
 
               // Находим все LWJGL библиотеки в classpath (ВАЖНО: убираем дубликаты через Set!)
               const uniqueLwjglLibs = [...new Set(libraries)].filter(lib => {
@@ -1270,59 +1251,40 @@ class MinecraftLauncher {
               });
               const lwjglLibs = uniqueLwjglLibs;
 
-              const additionalModulesDownloaded = [];
-
               if (lwjglLibs.length > 0) {
                 console.log(`✓ Найдено ${lwjglLibs.length} LWJGL библиотек для добавления в module path`);
                 logStream.write(`[FORGE] Found ${lwjglLibs.length} LWJGL libraries\n`);
-                additionalModulesDownloaded.push(...lwjglLibs);
+
+                // Добавляем LWJGL библиотеки к существующему module path
+                const currentModulePath = jvmArgs[modulepathIndexDownloaded + 1];
+                const lwjglPaths = lwjglLibs.join(separator);
+                jvmArgs[modulepathIndexDownloaded + 1] = currentModulePath + separator + lwjglPaths;
+
+                console.log(`✓ Добавлено ${lwjglLibs.length} LWJGL библиотек в module path`);
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
+                logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
               }
 
-              // КРИТИЧЕСКИ ВАЖНО: Создаём копию главного JAR с валидным именем модуля!
-              // Проблема: Forge использует Class.forName(Module, String) который ищет ТОЛЬКО в модулях
-              // Решение: Копируем 1.18.2.jar -> minecraft.client.jar (валидное имя модуля)
+              // КРИТИЧЕСКИ ВАЖНО: Используем --patch-module для добавления Minecraft классов
+              // Проблема: Minecraft JAR содержит классы в unnamed package (biq$i.class и т.д.)
+              // Решение: Вклеиваем JAR в модуль Forge через --patch-module
               const baseVersion = versionData.inheritsFrom || version;
               const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
-              const moduleJarPath = path.join(this.versionsDir, baseVersion, 'minecraft.client.jar');
 
               if (fs.existsSync(mainJarPath)) {
-                try {
-                  // Проверяем нужно ли создавать/обновлять копию
-                  let needsCopy = !fs.existsSync(moduleJarPath);
-                  if (!needsCopy) {
-                    const mainStat = fs.statSync(mainJarPath);
-                    const moduleStat = fs.statSync(moduleJarPath);
-                    needsCopy = mainStat.mtime > moduleStat.mtime; // Обновляем если оригинал новее
-                  }
+                // Добавляем --patch-module ПЕРЕД другими аргументами
+                // Вклеиваем Minecraft JAR в модуль cpw.mods.securejarhandler (основной модуль Forge)
+                const patchModuleArg = `--patch-module`;
+                const patchModuleValue = `cpw.mods.securejarhandler=${mainJarPath}`;
 
-                  if (needsCopy) {
-                    console.log(`>>> Создание модульной копии: ${path.basename(mainJarPath)} -> minecraft.client.jar`);
-                    logStream.write(`[FORGE] Creating module copy: ${path.basename(mainJarPath)} -> minecraft.client.jar\n`);
-                    fs.copyFileSync(mainJarPath, moduleJarPath);
-                  }
+                // Вставляем ПЕРЕД -p (module path)
+                jvmArgs.splice(modulepathIndexDownloaded, 0, patchModuleArg, patchModuleValue);
 
-                  // Добавляем модульную копию в module path
-                  additionalModulesDownloaded.push(moduleJarPath);
-                  console.log(`✓ Добавление главного Minecraft JAR в module path: minecraft.client.jar`);
-                  logStream.write(`[FORGE] ✓ Adding main JAR to module path: minecraft.client.jar\n`);
-                } catch (copyErr) {
-                  console.error(`⚠️  Ошибка создания модульной копии: ${copyErr.message}`);
-                  logStream.write(`[FORGE] ✗ Error creating module copy: ${copyErr.message}\n`);
-                }
+                console.log(`✓ Добавлен --patch-module для главного Minecraft JAR`);
+                logStream.write(`[FORGE] ✓ Added --patch-module cpw.mods.securejarhandler=${path.basename(mainJarPath)}\n`);
               } else {
                 console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
                 logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
-              }
-
-              if (additionalModulesDownloaded.length > 0) {
-                // Добавляем все модули к существующему module path
-                const currentModulePath = jvmArgs[modulepathIndexDownloaded + 1];
-                const additionalPaths = additionalModulesDownloaded.join(separator);
-                jvmArgs[modulepathIndexDownloaded + 1] = currentModulePath + separator + additionalPaths;
-
-                console.log(`✓ Добавлено ${additionalModulesDownloaded.length} модулей в module path`);
-                logStream.write(`[FORGE] ✓ Added ${additionalModulesDownloaded.length} modules to module path\n`);
               }
             }
 

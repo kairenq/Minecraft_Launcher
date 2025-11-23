@@ -1029,74 +1029,12 @@ class MinecraftLauncher {
                 lwjglLibs.forEach(lib => console.log(`  - ${path.basename(lib)}`));
                 logStream.write(`[FORGE] ✓ Added ${lwjglLibs.length} LWJGL libs to module path\n`);
               }
-
-              // КРИТИЧЕСКИ ВАЖНО: Используем --patch-module для добавления Minecraft классов
-              // Проблема: Minecraft JAR содержит классы в unnamed package (biq$i.class и т.д.)
-              // Решение: Вклеиваем JAR в модуль Forge через --patch-module
-              const baseVersion = versionData.inheritsFrom || version;
-              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
-
-              if (fs.existsSync(mainJarPath)) {
-                // Добавляем --patch-module ПЕРЕД другими аргументами
-                // Вклеиваем Minecraft JAR в модуль cpw.mods.securejarhandler (основной модуль Forge)
-                const patchModuleArg = `--patch-module`;
-                const patchModuleValue = `cpw.mods.securejarhandler=${mainJarPath}`;
-
-                // Вставляем ПЕРЕД -p (module path)
-                jvmArgs.splice(modulepathIndex, 0, patchModuleArg, patchModuleValue);
-
-                console.log(`✓ Добавлен --patch-module для главного Minecraft JAR`);
-                logStream.write(`[FORGE] ✓ Added --patch-module cpw.mods.securejarhandler=${path.basename(mainJarPath)}\n`);
-              } else {
-                console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
-                logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
-              }
             }
 
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавляем главный Minecraft JAR в legacyClassPath
-            // Главный JAR исключён из classpath (правильно), но должен быть в legacyClassPath!
-            console.log('\n>>> FORGE: Добавление главного Minecraft JAR в legacyClassPath...');
-            logStream.write('[FORGE] Adding main Minecraft JAR to legacyClassPath...\n');
-
-            // Находим индекс аргумента legacyClassPath
-            const legacyClassPathIndex = jvmArgs.findIndex(arg => arg.startsWith('-DlegacyClassPath='));
-            if (legacyClassPathIndex !== -1) {
-              const legacyClassPathArg = jvmArgs[legacyClassPathIndex];
-              const legacyClassPathValue = legacyClassPathArg.substring('-DlegacyClassPath='.length);
-
-              // Определяем путь к главному Minecraft JAR
-              // Для Forge используем inheritsFrom (базовая версия, например 1.18.2)
-              const baseVersion = versionData.inheritsFrom || version;
-              const mainJarPath = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
-
-              console.log(`>>> Главный JAR: ${mainJarPath}`);
-              logStream.write(`[FORGE] Main JAR: ${mainJarPath}\n`);
-
-              // Проверяем существует ли файл
-              if (fs.existsSync(mainJarPath)) {
-                // Проверяем не содержит ли legacyClassPath уже этот JAR
-                const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
-                const alreadyHasMainJar = pathsInLegacy.some(p => p.includes(baseVersion + '.jar'));
-
-                if (!alreadyHasMainJar) {
-                  // Добавляем главный JAR в НАЧАЛО legacyClassPath (важно для приоритета загрузки)
-                  const newLegacyClassPath = mainJarPath + path.delimiter + legacyClassPathValue;
-                  jvmArgs[legacyClassPathIndex] = `-DlegacyClassPath=${newLegacyClassPath}`;
-
-                  console.log(`✓ Добавлен главный Minecraft JAR в legacyClassPath: ${baseVersion}.jar`);
-                  logStream.write(`[FORGE] ✓ Added main JAR to legacyClassPath: ${baseVersion}.jar\n`);
-                } else {
-                  console.log(`✓ Главный JAR уже в legacyClassPath`);
-                  logStream.write(`[FORGE] ✓ Main JAR already in legacyClassPath\n`);
-                }
-              } else {
-                console.warn(`⚠️  Главный JAR не найден: ${mainJarPath}`);
-                logStream.write(`[FORGE] ✗ Main JAR not found: ${mainJarPath}\n`);
-              }
-            } else {
-              console.log(`⚠️  legacyClassPath не найден в win_args.txt`);
-              logStream.write(`[FORGE] ✗ legacyClassPath not found in win_args.txt\n`);
-            }
+            // ВАЖНО: win_args.txt уже содержит корректный legacyClassPath с главным Minecraft JAR
+            // Не модифицируем его - используем как есть из официального Forge
+            console.log('✓ Используем legacyClassPath из win_args.txt без модификаций');
+            logStream.write('[FORGE] ✓ Using legacyClassPath from win_args.txt as-is\n');
           } catch (err) {
             console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
             logStream.write(`[FORGE] ✗ Error reading file: ${err.message}\n`);

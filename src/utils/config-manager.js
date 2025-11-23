@@ -15,12 +15,25 @@ class ConfigManager {
       {
         id: 'draconica-1-18-2',
         name: 'Draconica',
-        description: 'Погрузитесь в эпический мир драконов, магии и приключений! Приручайте легендарных существ, исследуйте мистические измерения и станьте величайшим повелителем стихий.',
+        description: 'Майнкрафт сборка с уклоном в приключения и технологии. Стало скучно и хочется развеяться? Время побегать по миру и заняться сражением с боссами, жуткими монстрами. Устал бегать? Можно заняться изучением индустриальных модов, сделать "бесконечный сундук", в виде МЭ системы, скрафтить сильнейшую броню и инструменты, научиться умножать руду! Сборка имеет более 150 различных модов и 180+ интереснейших квестов.',
+        icon: 'assets/modpacks/draconica_logo.jpg',
         minecraftVersion: '1.18.2',
         modLoader: 'forge',
         modLoaderVersion: null,
         installed: false,
         archiveUrl: 'https://github.com/kairenq/Minecraft_Launcher/releases/download/v1.1.3/Draconica1.1.3.zip',
+        mods: []
+      },
+      {
+        id: 'skydustry-1-20-1',
+        name: 'Skydustry',
+        description: 'Тестовая сборка Minecraft 1.20.1 с модами на Forge. Индустриальная сборка с акцентом на автоматизацию, технологии и строительство. Создавайте сложные производственные цепочки, автоматизируйте процессы и стройте масштабные заводы!',
+        icon: 'assets/modpacks/skydustry_logo.jpg',
+        minecraftVersion: '1.20.1',
+        modLoader: 'forge',
+        modLoaderVersion: null,
+        installed: false,
+        archiveUrl: 'https://github.com/kairenq/Minecraft_Launcher/releases/download/v.1.0.0/Skydustry.zip',
         mods: []
       }
     ];

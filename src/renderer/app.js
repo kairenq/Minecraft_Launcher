@@ -4,15 +4,18 @@ const { ipcRenderer } = require('electron');
 let config = {};
 let modpacks = [];
 let currentModpack = null;
+let isDarkTheme = true;
 
 // Инициализация приложения
 document.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
   await loadModpacks();
   await loadSystemInfo();
+  setupSidebar();
   setupNavigation();
   setupSettings();
-  setupModal();
+  setupSocialLinks();
+  setupModsList();
   updateUI();
 });
 
@@ -21,6 +24,12 @@ async function loadConfig() {
   try {
     config = await ipcRenderer.invoke('get-config');
     console.log('Config loaded:', config);
+
+    // Загрузка темы
+    isDarkTheme = config.theme !== 'light';
+    if (!isDarkTheme) {
+      document.body.classList.add('light-theme');
+    }
   } catch (error) {
     console.error('Failed to load config:', error);
   }
@@ -44,11 +53,9 @@ async function loadSystemInfo() {
     document.getElementById('total-memory').textContent = sysInfo.totalMemory;
     document.getElementById('free-memory').textContent = sysInfo.freeMemory;
 
-    // Установка максимальной памяти (80% от общей)
     const maxMemory = Math.floor(sysInfo.totalMemory * 0.8);
     document.getElementById('memory-slider').max = maxMemory;
 
-    // Загрузка пути к директории
     const launcherDir = await ipcRenderer.invoke('get-launcher-dir');
     document.getElementById('game-dir-path').textContent = launcherDir;
   } catch (error) {
@@ -56,32 +63,40 @@ async function loadSystemInfo() {
   }
 }
 
-// Отрисовка сборок
+// Настройка бокового меню
+function setupSidebar() {
+  const sidebar = document.getElementById('modpacks-sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+
+  toggle.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+  });
+}
+
+// Отрисовка сборок в боковом меню
 function renderModpacks() {
-  const grid = document.getElementById('modpacks-grid');
-  grid.innerHTML = '';
+  const list = document.getElementById('modpacks-list');
+  list.innerHTML = '';
 
-  modpacks.forEach(modpack => {
-    const card = document.createElement('div');
-    card.className = 'modpack-card';
-    card.onclick = () => openModpackModal(modpack);
+  modpacks.forEach((modpack, index) => {
+    const item = document.createElement('div');
+    item.className = 'modpack-item';
+    item.onclick = () => openModpackPage(modpack);
 
-    const statusClass = modpack.installed ? 'installed' : 'not-installed';
-    const statusText = modpack.installed ? 'Установлено' : 'Не установлено';
+    const gradient = getRandomGradient();
+    const icon = modpack.icon || modpack.name.charAt(0).toUpperCase();
 
-    card.innerHTML = `
-      <div class="modpack-image" style="background: linear-gradient(135deg, ${getRandomGradient()})"></div>
+    item.innerHTML = `
+      <div class="modpack-icon" style="background: linear-gradient(135deg, ${gradient})">
+        ${typeof icon === 'string' && icon.length === 1 ? icon : '<img src="' + icon + '" alt="">'}
+      </div>
       <div class="modpack-info">
-        <h3>${modpack.name}</h3>
-        <p>${modpack.description}</p>
-        <div class="modpack-meta">
-          <span class="modpack-version">v${modpack.minecraftVersion}</span>
-          <span class="modpack-status ${statusClass}">${statusText}</span>
-        </div>
+        <h4>${modpack.name}</h4>
+        <p>Minecraft ${modpack.minecraftVersion}</p>
       </div>
     `;
 
-    grid.appendChild(card);
+    list.appendChild(item);
   });
 }
 
@@ -100,31 +115,262 @@ function getRandomGradient() {
   return gradients[Math.floor(Math.random() * gradients.length)];
 }
 
-// Навигация между страницами
-function setupNavigation() {
-  const navItems = document.querySelectorAll('.nav-item');
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const page = item.dataset.page;
+// Открытие страницы сборки
+function openModpackPage(modpack) {
+  currentModpack = modpack;
 
-      // Обновление активных элементов навигации
-      navItems.forEach(nav => nav.classList.remove('active'));
+  // Скрываем главную, показываем страницу сборки
+  document.getElementById('home-page').classList.remove('active');
+  document.getElementById('modpack-page').classList.add('active');
+
+  // Заполняем информацию
+  document.getElementById('modpack-title').textContent = modpack.name;
+  document.getElementById('modpack-version-badge').textContent = `Minecraft ${modpack.minecraftVersion}`;
+  document.getElementById('modpack-description-text').textContent = modpack.description;
+
+  // Детальная информация - ИСПРАВЛЕНО: используем modLoader вместо loaderType
+  document.getElementById('modpack-minecraft-version').textContent = modpack.minecraftVersion;
+
+  const loaderType = modpack.modLoader || 'vanilla';
+  document.getElementById('modpack-loader-type').textContent =
+    loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
+
+  document.getElementById('modpack-mods-count').textContent = modpack.modsCount || 'Загружается...';
+  document.getElementById('modpack-install-status').textContent = modpack.installed ? 'Установлено' : 'Не установлено';
+
+  // Установка градиента для картинки
+  const imageLarge = document.getElementById('modpack-image-large');
+  imageLarge.style.background = `linear-gradient(135deg, ${getRandomGradient()})`;
+
+  // Бейджи статуса
+  const statusBadge = document.getElementById('modpack-status-badge');
+  if (modpack.installed) {
+    statusBadge.textContent = 'Установлено';
+    statusBadge.classList.add('installed');
+  } else {
+    statusBadge.textContent = 'Не установлено';
+    statusBadge.classList.remove('installed');
+  }
+
+  // Кнопки действий
+  const installBtn = document.getElementById('modpack-action-btn');
+  const playBtn = document.getElementById('modpack-play-btn');
+
+  if (modpack.installed) {
+    installBtn.style.display = 'none';
+    playBtn.style.display = 'flex';
+  } else {
+    installBtn.style.display = 'flex';
+    playBtn.style.display = 'none';
+  }
+
+  // Активная сборка в меню
+  document.querySelectorAll('.modpack-item').forEach((item, index) => {
+    if (index === modpacks.indexOf(modpack)) {
       item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+}
 
-      // Переключение страниц
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById(`${page}-page`).classList.add('active');
+// Настройка навигации
+function setupNavigation() {
+  // Кнопка "Назад" со страницы сборки
+  document.getElementById('back-to-home').addEventListener('click', () => {
+    document.getElementById('modpack-page').classList.remove('active');
+    document.getElementById('home-page').classList.add('active');
+
+    // Снимаем активность со всех сборок
+    document.querySelectorAll('.modpack-item').forEach(item => {
+      item.classList.remove('active');
     });
   });
+
+  // Кнопка "Назад" из настроек
+  document.getElementById('back-from-settings').addEventListener('click', () => {
+    document.getElementById('settings-page').classList.remove('active');
+    document.getElementById('home-page').classList.add('active');
+  });
+
+  // Плавающая кнопка настроек
+  document.getElementById('settings-btn').addEventListener('click', () => {
+    document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+    document.getElementById('settings-page').classList.add('active');
+  });
+
+  // Кнопка установки/запуска
+  document.getElementById('modpack-action-btn').addEventListener('click', () => {
+    if (currentModpack) {
+      installModpack(currentModpack);
+    }
+  });
+
+  document.getElementById('modpack-play-btn').addEventListener('click', () => {
+    if (currentModpack) {
+      launchModpack(currentModpack);
+    }
+  });
+}
+
+// Настройка ссылок на соц сети
+function setupSocialLinks() {
+  // Здесь можно добавить реальные ссылки
+  document.getElementById('social-discord').addEventListener('click', (e) => {
+    e.preventDefault();
+    // ipcRenderer.send('open-external', 'https://discord.gg/your-server');
+    console.log('Discord link clicked');
+  });
+
+  document.getElementById('social-telegram').addEventListener('click', (e) => {
+    e.preventDefault();
+    // ipcRenderer.send('open-external', 'https://t.me/your-channel');
+    console.log('Telegram link clicked');
+  });
+
+  document.getElementById('social-boosty').addEventListener('click', (e) => {
+    e.preventDefault();
+    // ipcRenderer.send('open-external', 'https://boosty.to/your-page');
+    console.log('Boosty link clicked');
+  });
+}
+
+// Настройка списка модов
+function setupModsList() {
+  const btnModsList = document.getElementById('btn-mods-list');
+  const modsModal = document.getElementById('mods-modal');
+  const modsModalClose = document.getElementById('mods-modal-close');
+
+  btnModsList.addEventListener('click', async () => {
+    if (!currentModpack) return;
+
+    modsModal.classList.add('active');
+    document.getElementById('mods-loading').style.display = 'flex';
+    document.getElementById('mods-list').classList.remove('active');
+
+    try {
+      const mods = await loadModsFromGitHub(currentModpack);
+      displayMods(mods);
+    } catch (error) {
+      console.error('Failed to load mods:', error);
+      document.getElementById('mods-loading').innerHTML = `
+        <p style="color: var(--danger)">Не удалось загрузить список модов</p>
+        <p style="color: var(--text-secondary); font-size: 12px;">${error.message}</p>
+      `;
+    }
+  });
+
+  modsModalClose.addEventListener('click', () => {
+    modsModal.classList.remove('active');
+  });
+
+  modsModal.addEventListener('click', (e) => {
+    if (e.target === modsModal) {
+      modsModal.classList.remove('active');
+    }
+  });
+}
+
+// Загрузка списка модов из GitHub Release
+async function loadModsFromGitHub(modpack) {
+  if (!modpack.archiveUrl) {
+    throw new Error('У сборки нет архива для анализа');
+  }
+
+  // Парсим URL релиза
+  const match = modpack.archiveUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/download\/([^\/]+)/);
+  if (!match) {
+    throw new Error('Неверный формат URL архива');
+  }
+
+  const [, owner, repo, tag] = match;
+
+  // Пытаемся получить информацию о релизе
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
+
+  const response = await fetch(apiUrl);
+  if (!response.ok) {
+    throw new Error('Не удалось получить данные о релизе');
+  }
+
+  const releaseData = await response.json();
+
+  // Ищем в описании релиза информацию о модах
+  // или возвращаем базовую информацию
+  const mods = parseModsFromRelease(releaseData);
+
+  return mods;
+}
+
+// Парсинг списка модов из релиза
+function parseModsFromRelease(releaseData) {
+  const mods = [];
+
+  // Если в описании есть список модов (например, в формате - Mod Name vX.X.X)
+  const body = releaseData.body || '';
+  const modLines = body.split('\n').filter(line => line.trim().startsWith('-'));
+
+  if (modLines.length > 0) {
+    modLines.forEach(line => {
+      const cleaned = line.replace(/^-\s*/, '').trim();
+      if (cleaned) {
+        mods.push({
+          name: cleaned,
+          version: 'Unknown'
+        });
+      }
+    });
+  }
+
+  // Если модов не найдено, показываем базовую информацию
+  if (mods.length === 0) {
+    mods.push({
+      name: 'Draconica Modpack',
+      version: releaseData.tag_name || 'Unknown',
+      description: 'Полная информация о модах доступна в архиве'
+    });
+  }
+
+  return mods;
+}
+
+// Отображение списка модов
+function displayMods(mods) {
+  const modsList = document.getElementById('mods-list');
+  const modsLoading = document.getElementById('mods-loading');
+
+  modsLoading.style.display = 'none';
+  modsList.innerHTML = '';
+
+  if (mods.length === 0) {
+    modsList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Модов не найдено</p>';
+  } else {
+    mods.forEach((mod, index) => {
+      const modItem = document.createElement('div');
+      modItem.className = 'mod-item';
+
+      const icon = mod.name.charAt(0).toUpperCase();
+
+      modItem.innerHTML = `
+        <div class="mod-icon">${icon}</div>
+        <div class="mod-info">
+          <h4>${mod.name}</h4>
+          <p>${mod.version || ''} ${mod.description ? '• ' + mod.description : ''}</p>
+        </div>
+      `;
+
+      modsList.appendChild(modItem);
+    });
+  }
+
+  modsList.classList.add('active');
 }
 
 // Настройка настроек
 function setupSettings() {
-  // Имя пользователя
   const usernameInput = document.getElementById('username-input');
   usernameInput.value = config.username || 'Player';
 
-  // Слайдер памяти
   const memorySlider = document.getElementById('memory-slider');
   const memoryValue = document.getElementById('memory-value');
   memorySlider.value = config.allocatedMemory || 2048;
@@ -134,23 +380,36 @@ function setupSettings() {
     memoryValue.textContent = e.target.value;
   });
 
-  // Размер окна
   const windowSize = document.getElementById('window-size');
   windowSize.value = `${config.windowWidth || 1200}x${config.windowHeight || 750}`;
 
-  // Открытие директории
+  // Настройка темы через select
+  const themeSelect = document.getElementById('theme-select');
+  themeSelect.value = config.theme || 'dark';
+
+  themeSelect.addEventListener('change', (e) => {
+    const newTheme = e.target.value;
+    isDarkTheme = newTheme === 'dark';
+
+    if (isDarkTheme) {
+      document.body.classList.remove('light-theme');
+    } else {
+      document.body.classList.add('light-theme');
+    }
+  });
+
   document.getElementById('open-dir-btn').addEventListener('click', async () => {
     await ipcRenderer.invoke('open-game-dir');
   });
 
-  // Сохранение настроек
   document.getElementById('save-settings-btn').addEventListener('click', async () => {
     const newConfig = {
       ...config,
       username: usernameInput.value,
       allocatedMemory: parseInt(memorySlider.value),
       windowWidth: parseInt(windowSize.value.split('x')[0]),
-      windowHeight: parseInt(windowSize.value.split('x')[1])
+      windowHeight: parseInt(windowSize.value.split('x')[1]),
+      theme: themeSelect.value
     };
 
     try {
@@ -165,98 +424,87 @@ function setupSettings() {
   });
 }
 
-// Настройка модального окна
-function setupModal() {
-  const modal = document.getElementById('modpack-modal');
-  const closeBtn = document.getElementById('modal-close');
-
-  closeBtn.addEventListener('click', closeModpackModal);
-
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeModpackModal();
-    }
-  });
-}
-
-// Открытие модального окна сборки
-function openModpackModal(modpack) {
-  currentModpack = modpack;
-
-  const modal = document.getElementById('modpack-modal');
-  document.getElementById('modal-title').textContent = modpack.name;
-  document.getElementById('modal-description').textContent = modpack.description;
-  document.getElementById('modal-version').textContent = modpack.minecraftVersion;
-
-  const statusText = modpack.installed ? 'Установлено' : 'Не установлено';
-  const statusClass = modpack.installed ? 'installed' : 'not-installed';
-  document.getElementById('modal-status').innerHTML = `<span class="modpack-status ${statusClass}">${statusText}</span>`;
-
-  // Кнопки действий
-  const installBtn = document.getElementById('modal-action-btn');
-  const playBtn = document.getElementById('modal-play-btn');
-
-  if (modpack.installed) {
-    installBtn.style.display = 'none';
-    playBtn.style.display = 'block';
-    playBtn.onclick = () => launchModpack(modpack);
-  } else {
-    installBtn.style.display = 'block';
-    playBtn.style.display = 'none';
-    installBtn.onclick = () => installModpack(modpack);
-  }
-
-  modal.classList.add('active');
-}
-
-// Закрытие модального окна
-function closeModpackModal() {
-  document.getElementById('modpack-modal').classList.remove('active');
-  currentModpack = null;
-}
-
-// Установка сборки
+// Установка сборки с прогрессом в кнопке - ИСПРАВЛЕНА ЛОГИКА ПРОГРЕССА
 async function installModpack(modpack) {
-  closeModpackModal();
-  showProgress('Установка сборки', 0);
+  const btn = document.getElementById('modpack-action-btn');
+  const btnProgress = document.getElementById('btn-progress');
+  const btnProgressBar = document.getElementById('btn-progress-bar');
+  const btnProgressText = document.getElementById('btn-progress-text');
+
+  // Показываем прогресс в кнопке
+  btn.disabled = true;
+  btnProgress.classList.add('active');
+
+  let currentStage = '';
+  let stageProgress = 0;
 
   try {
-    // Подписка на прогресс
-    ipcRenderer.on('download-progress', (event, data) => {
-      if (data.stage) {
-        updateProgress(data.stage, data.percent || 0);
-      } else {
-        updateProgress('Загрузка...', data.progress || 0);
+    // Обработчик единого прогресса
+    const progressHandler = (event, data) => {
+      // ВАЖНО: Обновляем прогресс только для текущей сборки!
+      if (data.modpackId && data.modpackId !== modpack.id) {
+        return; // Игнорируем события для других сборок
       }
-    });
 
+      if (data.stage) {
+        currentStage = data.stage;
+        stageProgress = data.percent || 0;
+      } else if (data.progress !== undefined) {
+        stageProgress = data.progress || 0;
+      }
+
+      // Обновляем визуальный прогресс
+      const progress = Math.min(100, Math.max(0, stageProgress));
+      btnProgressBar.style.width = progress + '%';
+      btnProgressText.textContent = Math.floor(progress) + '%';
+    };
+
+    ipcRenderer.on('download-progress', progressHandler);
     ipcRenderer.on('install-status', (event, data) => {
-      const statusMessages = {
-        'downloading-java': 'Загрузка Java...',
-        'downloading-minecraft': 'Загрузка Minecraft...',
-        'installing-mods': 'Установка модов...',
-        'completed': 'Установка завершена!'
-      };
-      updateProgress(statusMessages[data.status] || data.status, 50);
+      // ВАЖНО: Обновляем статус только для текущей сборки!
+      if (data.modpackId && data.modpackId !== modpack.id) {
+        return; // Игнорируем события для других сборок
+      }
+
+      if (data.status === 'downloading-java') {
+        btnProgressText.textContent = 'Java...';
+      } else if (data.status === 'downloading-minecraft') {
+        btnProgressText.textContent = 'Minecraft...';
+      } else if (data.status === 'installing-modloader') {
+        btnProgressText.textContent = 'Модлоадер...';
+      } else if (data.status === 'installing-archive') {
+        btnProgressText.textContent = 'Архив...';
+      } else if (data.status === 'installing-mods') {
+        btnProgressText.textContent = 'Моды...';
+      }
     });
 
     // Запуск установки
     await ipcRenderer.invoke('install-modpack', modpack.id);
 
-    // Обновление статуса сборки
+    // Обновляем статус сборки
     modpack.installed = true;
     await loadModpacks();
 
-    updateProgress('Установка завершена!', 100);
+    // Завершение
+    btnProgressBar.style.width = '100%';
+    btnProgressText.textContent = '100%';
 
     setTimeout(() => {
-      hideProgress();
-      showNotification(`${modpack.name} успешно установлено!`);
-    }, 1500);
+      btnProgress.classList.remove('active');
+      btn.style.display = 'none';
+      document.getElementById('modpack-play-btn').style.display = 'flex';
+      btn.disabled = false;
+      showNotification(`${modpack.name} успешно установлен!`);
+
+      // Обновляем страницу сборки
+      openModpackPage(modpack);
+    }, 1000);
 
   } catch (error) {
     console.error('Installation error:', error);
-    hideProgress();
+    btnProgress.classList.remove('active');
+    btn.disabled = false;
     showNotification('Ошибка установки: ' + error.message, true);
   } finally {
     ipcRenderer.removeAllListeners('download-progress');
@@ -266,8 +514,11 @@ async function installModpack(modpack) {
 
 // Запуск сборки
 async function launchModpack(modpack) {
-  closeModpackModal();
-  showProgress('Запуск Minecraft', 50);
+  const playBtn = document.getElementById('modpack-play-btn');
+  const originalText = playBtn.querySelector('.btn-text').textContent;
+
+  playBtn.disabled = true;
+  playBtn.querySelector('.btn-text').textContent = 'Запуск...';
 
   try {
     await ipcRenderer.invoke('launch-minecraft', {
@@ -278,54 +529,85 @@ async function launchModpack(modpack) {
     });
 
     ipcRenderer.once('game-started', () => {
-      hideProgress();
+      playBtn.disabled = false;
+      playBtn.querySelector('.btn-text').textContent = originalText;
       showNotification('Minecraft запущен!');
     });
 
-    setTimeout(hideProgress, 3000);
+    setTimeout(() => {
+      playBtn.disabled = false;
+      playBtn.querySelector('.btn-text').textContent = originalText;
+    }, 3000);
 
   } catch (error) {
     console.error('Launch error:', error);
-    hideProgress();
+    playBtn.disabled = false;
+    playBtn.querySelector('.btn-text').textContent = originalText;
     showNotification('Ошибка запуска: ' + error.message, true);
   }
 }
 
-// Отображение прогресс-бара
-function showProgress(title, percent) {
-  const overlay = document.getElementById('progress-overlay');
-  document.getElementById('progress-title').textContent = title;
-  document.getElementById('progress-fill').style.width = percent + '%';
-  document.getElementById('progress-text').textContent = Math.floor(percent) + '%';
-  overlay.style.display = 'flex';
-}
-
-// Обновление прогресса
-function updateProgress(title, percent) {
-  document.getElementById('progress-title').textContent = title;
-  document.getElementById('progress-fill').style.width = percent + '%';
-  document.getElementById('progress-text').textContent = Math.floor(percent) + '%';
-}
-
-// Скрытие прогресс-бара
-function hideProgress() {
-  document.getElementById('progress-overlay').style.display = 'none';
-}
-
 // Обновление UI
 function updateUI() {
-  document.getElementById('username-display').textContent = config.username || 'Player';
+  const usernameDisplays = document.querySelectorAll('#username-display');
+  usernameDisplays.forEach(display => {
+    display.textContent = config.username || 'Player';
+  });
   renderModpacks();
 }
 
-// Уведомления
-function showNotification(message, isError = false) {
-  // Простое уведомление через alert (можно улучшить)
-  if (isError) {
-    alert('Ошибка: ' + message);
-  } else {
-    alert(message);
+// Система toast-уведомлений
+function showNotification(message, type = 'success') {
+  // type может быть: 'success', 'error', 'info', 'warning'
+  // Для обратной совместимости: если второй параметр boolean
+  if (typeof type === 'boolean') {
+    type = type ? 'error' : 'success';
   }
+
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  // Иконки для разных типов
+  const icons = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>'
+  };
+
+  toast.innerHTML = `
+    <div class="toast-icon">${icons[type] || icons.info}</div>
+    <div class="toast-content">
+      <p class="toast-message">${message}</p>
+    </div>
+    <button class="toast-close" aria-label="Закрыть">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+  `;
+
+  // Добавляем toast в контейнер
+  container.appendChild(toast);
+
+  // Обработчик кнопки закрытия
+  const closeBtn = toast.querySelector('.toast-close');
+  closeBtn.addEventListener('click', () => removeToast(toast));
+
+  // Автоматическое удаление через 5 секунд
+  setTimeout(() => removeToast(toast), 5000);
+}
+
+function removeToast(toast) {
+  if (!toast || toast.classList.contains('removing')) return;
+
+  toast.classList.add('removing');
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 300);
 }
 
 // Обработка ошибок

@@ -642,13 +642,23 @@ class MinecraftLauncher {
         const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
         libraries.push(versionJar);
       } else if (versionData.inheritsFrom) {
-        // Для Forge/Fabric - используем JAR базовой версии
-        const baseVersionJar = path.join(this.versionsDir, versionData.inheritsFrom, `${versionData.inheritsFrom}.jar`);
-        if (fs.existsSync(baseVersionJar)) {
-          libraries.push(baseVersionJar);
-          console.log(`✓ Добавлен client JAR: ${versionData.inheritsFrom}.jar`);
+        // ВАЖНО: Для Forge 1.17+ главный JAR НЕ добавляется в -cp!
+        // Он будет в legacyClassPath из win_args.txt
+        // Только для старых версий Forge (<1.17) добавляем в classpath
+        const isForge117Plus = versionId.includes('forge') && versionData.arguments?.jvm;
+
+        if (!isForge117Plus) {
+          // Для Forge/Fabric - используем JAR базовой версии
+          const baseVersionJar = path.join(this.versionsDir, versionData.inheritsFrom, `${versionData.inheritsFrom}.jar`);
+          if (fs.existsSync(baseVersionJar)) {
+            libraries.push(baseVersionJar);
+            console.log(`✓ Добавлен client JAR в classpath: ${versionData.inheritsFrom}.jar`);
+          } else {
+            console.warn(`⚠️  Client JAR не найден: ${baseVersionJar}`);
+          }
         } else {
-          console.warn(`⚠️  Client JAR не найден: ${baseVersionJar}`);
+          console.log(`✓ Для Forge 1.17+ главный JAR НЕ добавляется в -cp (будет в legacyClassPath)`);
+          logStream.write(`[FORGE] Main JAR excluded from -cp (will be in legacyClassPath from win_args.txt)\n`);
         }
       }
 

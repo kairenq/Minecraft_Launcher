@@ -1060,63 +1060,16 @@ class MinecraftLauncher {
               const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
 
               // Сначала ищем client-VERSION.jar в libraries (деобфусцированный)
-              const clientJarPattern = new RegExp(`client-${baseVersion.replace(/\./g, '\\.')}-\\d+-extra\\.jar`);
+              // НО НЕ КАЧАЕМ - это слишком медленно и блокирует запуск!
+              const clientJarPattern = new RegExp(`client-${baseVersion.replace(/\./g, '\\.')}-\\d+\\.jar`);
               for (const p of pathsInLegacy) {
-                if (clientJarPattern.test(p)) {
-                  // Нашли -extra.jar, значит рядом должен быть основной client-VERSION.jar
-                  const clientJar = p.replace('-extra.jar', '.jar');
-
-                  // КРИТИЧНО: Проверяем размер файлов - если меньше 1 МБ, они повреждены!
-                  const extraJarSize = fs.existsSync(p) ? fs.statSync(p).size : 0;
-                  const clientJarSize = fs.existsSync(clientJar) ? fs.statSync(clientJar).size : 0;
-
-                  console.log(`>>> Проверка client JAR: ${path.basename(clientJar)}`);
-                  console.log(`>>> Size: ${clientJarSize} bytes (${(clientJarSize / 1024 / 1024).toFixed(2)} MB)`);
-                  console.log(`>>> Extra size: ${extraJarSize} bytes (${(extraJarSize / 1024).toFixed(2)} KB)`);
-
-                  // Если основной JAR не существует или меньше 1 МБ - поврежден
-                  if (clientJarSize < 1024 * 1024) {
-                    console.log(`⚠️  Client JAR отсутствует или поврежден (< 1 MB)`);
-
-                    // Пытаемся скачать из Maven
-                    const match = path.basename(clientJar).match(/client-(\d+\.\d+(?:\.\d+)?)-(\d+)\.jar/);
-                    if (match) {
-                      const mcVersion = match[1];
-                      const timestamp = match[2];
-                      const mavenUrl = `https://maven.minecraftforge.net/net/minecraft/client/${mcVersion}-${timestamp}/client-${mcVersion}-${timestamp}.jar`;
-
-                      console.log(`>>> Скачивание из Maven: ${mavenUrl}`);
-                      logStream.write(`[FORGE] Downloading deobfuscated client from ${mavenUrl}\n`);
-
-                      try {
-                        const https = require('https');
-                        await new Promise((resolve, reject) => {
-                          const file = fs.createWriteStream(clientJar);
-                          https.get(mavenUrl, (response) => {
-                            if (response.statusCode === 200) {
-                              response.pipe(file);
-                              file.on('finish', () => {
-                                file.close();
-                                console.log(`✓ Скачан: ${path.basename(clientJar)} (${fs.statSync(clientJar).size} bytes)`);
-                                resolve();
-                              });
-                            } else {
-                              reject(new Error(`HTTP ${response.statusCode}`));
-                            }
-                          }).on('error', reject);
-                        });
-                      } catch (err) {
-                        console.error(`✗ Ошибка скачивания: ${err.message}`);
-                        logStream.write(`[FORGE] ✗ Download failed: ${err.message}\n`);
-                      }
-                    }
-                  }
-
-                  // Проверяем снова после скачивания
-                  if (fs.existsSync(clientJar) && fs.statSync(clientJar).size > 1024 * 1024) {
-                    mainJarPath = clientJar;
-                    console.log(`>>> Найден деобфусцированный клиент: ${path.basename(clientJar)}`);
-                    logStream.write(`[FORGE] Found deobfuscated client: ${clientJar}\n`);
+                // Ищем client-VERSION.jar БЕЗ -extra
+                if (clientJarPattern.test(p) && !p.includes('-extra.jar')) {
+                  // Проверяем размер - если больше 1 МБ, это нормальный файл
+                  if (fs.existsSync(p) && fs.statSync(p).size > 1024 * 1024) {
+                    mainJarPath = p;
+                    console.log(`>>> Найден деобфусцированный клиент: ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)} MB)`);
+                    logStream.write(`[FORGE] Found deobfuscated client: ${p}\n`);
                     break;
                   }
                 }

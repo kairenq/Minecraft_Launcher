@@ -1063,13 +1063,25 @@ class MinecraftLauncher {
               // Проверяем существует ли главный JAR
               if (fs.existsSync(mainJarPath)) {
                 // Проверяем содержит ли legacyClassPath главный JAR
+                // ВАЖНО: Не путать с client-VERSION-extra.jar!
                 const pathsInLegacy = legacyClassPathValue.split(path.delimiter);
-                const hasMainJar = pathsInLegacy.some(p =>
-                  p.includes(`${baseVersion}.jar`) ||
-                  p.includes(`client-${baseVersion}`) ||
-                  p.endsWith(`\\${baseVersion}\\${baseVersion}.jar`) ||
-                  p.endsWith(`/${baseVersion}/${baseVersion}.jar`)
-                );
+                const hasMainJar = pathsInLegacy.some(p => {
+                  // Проверяем точное совпадение пути к главному JAR
+                  if (p === mainJarPath) return true;
+
+                  // Проверяем паттерн versions/VERSION/VERSION.jar
+                  if (p.endsWith(`\\${baseVersion}\\${baseVersion}.jar`) ||
+                      p.endsWith(`/${baseVersion}/${baseVersion}.jar`)) return true;
+
+                  // НЕ считаем -extra.jar главным JAR!
+                  if (p.includes('-extra.jar')) return false;
+
+                  // Проверяем client-VERSION.jar (БЕЗ -extra)
+                  const basename = path.basename(p);
+                  if (basename === `client-${baseVersion}.jar`) return true;
+
+                  return false;
+                });
 
                 if (!hasMainJar) {
                   // КРИТИЧНО: Главный JAR отсутствует в legacyClassPath - добавляем!

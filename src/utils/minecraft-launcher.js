@@ -122,22 +122,9 @@ class MinecraftLauncher {
           const baseVersionData = await fs.readJson(baseVersionPath);
           console.log('✓ Загружен базовый профиль:', versionData.inheritsFrom);
 
-          const baseLibraries = baseVersionData.libraries || [];
-          const modLoaderLibraries = versionData.libraries || [];
-          versionData.libraries = [...baseLibraries, ...modLoaderLibraries];
-
-          console.log(`\nБиблиотек из базы: ${baseLibraries.length}`);
-          console.log(`Библиотек ${modLoader}: ${modLoaderLibraries.length}`);
-          console.log(`Всего библиотек: ${versionData.libraries.length}`);
-
-          if (!versionData.assetIndex && baseVersionData.assetIndex) {
-            versionData.assetIndex = baseVersionData.assetIndex;
-            console.log('✓ Унаследован assetIndex:', versionData.assetIndex.id);
-          }
-
-          if (!versionData.assets && baseVersionData.assets) {
-            versionData.assets = baseVersionData.assets;
-          }
+          // Объединяем библиотеки, аргументы и другие свойства
+          versionData = this.mergeVersionData(baseVersionData, versionData);
+          console.log(`✓ Объединены данные версий`);
         } else {
           console.warn(`⚠️  Базовый профиль не найден: ${baseVersionPath}`);
         }
@@ -150,7 +137,7 @@ class MinecraftLauncher {
 
       // Извлечение нативных библиотек
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
-      await this.extractNatives(nativesDir, logStream);
+      await this.extractNatives(versionData, nativesDir, logStream);
 
       // Построение classpath
       const libraries = await this.buildClasspath(versionData, process.platform);
@@ -163,7 +150,7 @@ class MinecraftLauncher {
         }
       }
 
-      // КРИТИЧНО: Проверяем существование всех файлов в classpath
+      // Проверяем существование всех файлов в classpath
       console.log('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===');
       const { missingFiles, nativesInClasspath } = await this.validateClasspath(libraries, logStream);
 
@@ -245,6 +232,30 @@ class MinecraftLauncher {
   }
 
   /**
+   * Объединение данных базовой версии и версии модлоадера
+   */
+  mergeVersionData(baseData, modLoaderData) {
+    const merged = { ...baseData, ...modLoaderData };
+    
+    // Объединяем библиотеки
+    if (baseData.libraries && modLoaderData.libraries) {
+      merged.libraries = [...baseData.libraries, ...modLoaderData.libraries];
+    }
+    
+    // Объединяем аргументы JVM
+    if (baseData.arguments && baseData.arguments.jvm && modLoaderData.arguments && modLoaderData.arguments.jvm) {
+      merged.arguments.jvm = [...baseData.arguments.jvm, ...modLoaderData.arguments.jvm];
+    }
+    
+    // Объединяем игровые аргументы
+    if (baseData.arguments && baseData.arguments.game && modLoaderData.arguments && modLoaderData.arguments.game) {
+      merged.arguments.game = [...baseData.arguments.game, ...modLoaderData.arguments.game];
+    }
+
+    return merged;
+  }
+
+  /**
    * Построение classpath из библиотек версии
    */
   async buildClasspath(versionData, osName) {
@@ -315,10 +326,13 @@ class MinecraftLauncher {
   }
 
   /**
-   * Извлечение нативных библиотек
+   * Извлечение нативных библиотек с учетом версии
    */
-  async extractNatives(nativesDir, logStream) {
+  async extractNatives(versionData, nativesDir, logStream) {
     let nativesExtracted = 0;
+
+    // Очищаем директорию natives перед извлечением
+    await fs.emptyDir(nativesDir);
 
     const findNativeJars = (dir) => {
       const results = [];

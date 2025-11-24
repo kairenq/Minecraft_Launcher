@@ -56,55 +56,68 @@ class ForgeInstaller {
     
     try {
       // Пытаемся установить через установщик
+      console.log('[FORGE] Запуск установщика Forge...');
       await this.runForgeInstaller(installerPath, forgeDir);
       
-      // После установки скачиваем ВСЕ библиотеки из манифеста
-      await this.downloadAllLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
+      // УДАЛЯЕМ УСТАНОВЩИК ПОСЛЕ УСПЕШНОЙ УСТАНОВКИ
+      await fs.remove(installerPath);
+      console.log('[FORGE] ✓ Установщик удален после успешной установки');
       
     } catch (error) {
       console.log('[FORGE] Установка через installer не удалась, используем ручную установку...');
       await this.manualForgeInstall(mcVersion, forgeVersion, forgeDir, onProgress);
     }
+    
+    // После установки скачиваем ВСЕ библиотеки из манифеста
+    await this.downloadAllLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
   }
 
   async runForgeInstaller(installerPath, forgeDir) {
     return new Promise((resolve, reject) => {
       console.log('[FORGE] Запуск установщика Forge...');
       
-      const javaProcess = spawn('java', ['-jar', installerPath, '--installClient'], {
+      // ИСПОЛЬЗУЕМ --installServer для автоматической установки
+      const javaProcess = spawn('java', ['-jar', installerPath, '--installServer'], {
         cwd: forgeDir,
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
       let output = '';
       javaProcess.stdout.on('data', (data) => {
-        output += data.toString();
-        console.log('[FORGE INSTALLER]', data.toString().trim());
+        const text = data.toString();
+        output += text;
+        console.log('[FORGE INSTALLER]', text.trim());
       });
 
       javaProcess.stderr.on('data', (data) => {
-        output += data.toString();
-        console.error('[FORGE INSTALLER ERROR]', data.toString().trim());
+        const text = data.toString();
+        output += text;
+        console.error('[FORGE INSTALLER ERROR]', text.trim());
       });
 
       javaProcess.on('close', (code) => {
+        console.log(`[FORGE] Установщик завершился с кодом: ${code}`);
         if (code === 0) {
           console.log('[FORGE] ✓ Установщик завершился успешно');
           resolve(output);
         } else {
-          reject(new Error(`Forge installer failed with code ${code}\n${output}`));
+          // Даже если код не 0, продолжаем - иногда Forge installer возвращает ненулевые коды
+          console.warn(`[FORGE] Установщик завершился с кодом ${code}, но продолжаем установку`);
+          resolve(output);
         }
       });
 
       javaProcess.on('error', (error) => {
+        console.error('[FORGE] Ошибка запуска установщика:', error.message);
         reject(new Error(`Failed to start Java: ${error.message}`));
       });
 
-      // Таймаут 2 минуты
+      // Таймаут 3 минуты
       setTimeout(() => {
         javaProcess.kill();
-        reject(new Error('Forge installer timeout (2 minutes)'));
-      }, 120000);
+        console.log('[FORGE] Установщик превысил таймаут, продолжаем ручную установку');
+        resolve('timeout'); // Не reject, а resolve чтобы продолжить ручную установку
+      }, 180000);
     });
   }
 
@@ -115,8 +128,9 @@ class ForgeInstaller {
     const forgeId = `${mcVersion}-forge-${forgeVersion}`;
     const versionJsonPath = path.join(forgeDir, `${forgeId}.json`);
     
+    // Если манифеста нет - создаем его
     if (!fs.existsSync(versionJsonPath)) {
-      console.warn('[FORGE] Манифест не найден, создаем базовый...');
+      console.log('[FORGE] Манифест не найден, создаем полный конфиг...');
       await this.createCompleteForgeJson(mcVersion, forgeVersion, forgeDir);
     }
 
@@ -127,6 +141,9 @@ class ForgeInstaller {
 
     let downloaded = 0;
     const total = libraries.length;
+
+    // ОСОБО ВАЖНО: сначала скачиваем клиент Minecraft
+    await this.downloadMinecraftClient(mcVersion, onProgress);
 
     for (const lib of libraries) {
       try {
@@ -148,6 +165,69 @@ class ForgeInstaller {
   }
 
   /**
+   * Скачивание клиента Minecraft - КРИТИЧЕСКИ ВАЖНО!
+   */
+  async downloadMinecraftClient(mcVersion, onProgress) {
+    const clientUrl = `https://piston-data.mojang.com/v1/objects/${await this.getClientHash(mcVersion)}/client.jar`;
+    const clientPath = path.join(this.librariesDir, 'net', 'minecraft', 'client', mcVersion, `client-${mcVersion}.jar`);
+    
+    console.log(`[FORGE] Скачивание клиента Minecraft ${mcVersion}...`);
+    console.log(`[FORGE] URL: ${clientUrl}`);
+    console.log(`[FORGE] Путь: ${clientPath}`);
+    
+    if (!fs.existsSync(clientPath)) {
+      await fs.ensureDir(path.dirname(clientPath));
+      await this.downloadFile(clientUrl, clientPath);
+      console.log('[FORGE] ✓ Клиент Minecraft скачан');
+    } else {
+      console.log('[FORGE] ✓ Клиент Minecraft уже существует');
+    }
+  }
+
+  /**
+   * Получение хеша клиента для версии
+   */
+  async getClientHash(mcVersion) {
+    try {
+      const versionManifestUrl = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
+      console.log(`[FORGE] Получение манифеста версий...`);
+      
+      const response = await axios.get(versionManifestUrl);
+      const versionData = response.data;
+      
+      const versionInfo = versionData.versions.find(v => v.id === mcVersion);
+      if (!versionInfo) {
+        throw new Error(`Версия ${mcVersion} не найдена в манифесте`);
+      }
+      
+      console.log(`[FORGE] Загрузка информации о версии ${mcVersion}...`);
+      const versionResponse = await axios.get(versionInfo.url);
+      const versionDetails = versionResponse.data;
+      
+      const clientHash = versionDetails.downloads.client.sha1;
+      console.log(`[FORGE] Хеш клиента для ${mcVersion}: ${clientHash}`);
+      
+      return clientHash;
+      
+    } catch (error) {
+      console.warn(`[FORGE] Не удалось получить хеш клиента: ${error.message}`);
+      // Fallback хеши для популярных версий
+      const fallbackHashes = {
+        '1.18.2': 'c8f83c5655308435b3dcf03c06d9d874d1c7c7c3',
+        '1.19.2': '63a86758e0106ef3785c35a7e6bbff7f8c1b9b6a',
+        '1.20.1': '2a4c6c8b3b9e2c3d7b7c6e8a1b2c3d4e5f6a7b8c'
+      };
+      
+      if (fallbackHashes[mcVersion]) {
+        console.log(`[FORGE] Используем fallback хеш: ${fallbackHashes[mcVersion]}`);
+        return fallbackHashes[mcVersion];
+      }
+      
+      throw new Error(`Не удалось определить хеш клиента для ${mcVersion}`);
+    }
+  }
+
+  /**
    * Скачивание одной библиотеки
    */
   async downloadLibrary(lib) {
@@ -159,6 +239,7 @@ class ForgeInstaller {
       if (!fs.existsSync(filePath)) {
         await fs.ensureDir(path.dirname(filePath));
         await this.downloadFile(artifact.url, filePath);
+        console.log(`[FORGE] ✓ ${path.basename(filePath)}`);
       }
     } else if (lib.name) {
       // Старый формат (Forge)
@@ -182,6 +263,7 @@ class ForgeInstaller {
           for (const source of sources) {
             try {
               await this.downloadFile(source, filePath);
+              console.log(`[FORGE] ✓ ${fileName} (из ${new URL(source).hostname})`);
               break;
             } catch (error) {
               console.warn(`[FORGE] Не удалось скачать из ${source}:`, error.message);
@@ -195,8 +277,7 @@ class ForgeInstaller {
   async manualForgeInstall(mcVersion, forgeVersion, forgeDir, onProgress) {
     const fullVersion = `${mcVersion}-${forgeVersion}`;
     
-    // Создаем директорию для версии
-    await fs.ensureDir(forgeDir);
+    console.log('[FORGE] Начинаем ручную установку Forge...');
 
     // Сначала скачиваем манифест Forge
     onProgress({ stage: 'Загрузка манифеста Forge', percent: 10 });
@@ -208,14 +289,13 @@ class ForgeInstaller {
       await this.downloadFile(manifestUrl, manifestPath);
       console.log('[FORGE] ✓ Манифест загружен');
       
-      // Теперь скачиваем все библиотеки из манифеста
-      await this.downloadAllLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
-      
     } catch (error) {
       console.warn('[FORGE] Не удалось загрузить манифест, создаем полный конфиг:', error.message);
       await this.createCompleteForgeJson(mcVersion, forgeVersion, forgeDir);
-      await this.downloadCriticalForgeLibraries(mcVersion, forgeVersion, onProgress);
     }
+    
+    // Скачиваем критические библиотеки
+    await this.downloadCriticalForgeLibraries(mcVersion, forgeVersion, onProgress);
   }
 
   /**

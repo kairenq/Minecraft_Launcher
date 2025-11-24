@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
   await loadModpacks();
   await loadSystemInfo();
-  setupSidebar();
   setupNavigation();
   setupSettings();
   setupSocialLinks();
@@ -63,40 +62,34 @@ async function loadSystemInfo() {
   }
 }
 
-// Настройка бокового меню
-function setupSidebar() {
-  const sidebar = document.getElementById('modpacks-sidebar');
-  const toggle = document.getElementById('sidebar-toggle');
-
-  toggle.addEventListener('click', () => {
-    sidebar.classList.toggle('collapsed');
-  });
-}
-
-// Отрисовка сборок в боковом меню
+// Отрисовка сборок в grid
 function renderModpacks() {
-  const list = document.getElementById('modpacks-list');
-  list.innerHTML = '';
+  const grid = document.getElementById('modpacks-grid');
+  grid.innerHTML = '';
 
-  modpacks.forEach((modpack, index) => {
-    const item = document.createElement('div');
-    item.className = 'modpack-item';
-    item.onclick = () => openModpackPage(modpack);
+  modpacks.forEach((modpack) => {
+    const card = document.createElement('div');
+    card.className = 'modpack-card';
+    card.onclick = () => openModpackPage(modpack);
 
     const gradient = getRandomGradient();
-    const icon = modpack.icon || modpack.name.charAt(0).toUpperCase();
+    const bannerStyle = modpack.icon
+      ? `background-image: url(${modpack.icon}); background-size: cover;`
+      : `background: linear-gradient(135deg, ${gradient})`;
 
-    item.innerHTML = `
-      <div class="modpack-icon" style="background: linear-gradient(135deg, ${gradient})">
-        ${typeof icon === 'string' && icon.length === 1 ? icon : '<img src="' + icon + '" alt="">'}
-      </div>
-      <div class="modpack-info">
-        <h4>${modpack.name}</h4>
-        <p>Minecraft ${modpack.minecraftVersion}</p>
+    const statusClass = modpack.installed ? 'installed' : '';
+    const statusText = modpack.installed ? 'Установлено' : 'Не установлено';
+
+    card.innerHTML = `
+      <div class="modpack-card-banner" style="${bannerStyle}"></div>
+      <div class="modpack-card-content">
+        <h3 class="modpack-card-title">${modpack.name}</h3>
+        <p class="modpack-card-version">Minecraft ${modpack.minecraftVersion}</p>
+        <div class="modpack-card-status ${statusClass}">${statusText}</div>
       </div>
     `;
 
-    list.appendChild(item);
+    grid.appendChild(card);
   });
 }
 
@@ -119,37 +112,32 @@ function getRandomGradient() {
 function openModpackPage(modpack) {
   currentModpack = modpack;
 
-  // Скрываем главную, показываем страницу сборки
-  document.getElementById('home-page').classList.remove('active');
+  // Скрываем grid, показываем страницу сборки
+  document.getElementById('modpacks-grid-page').classList.remove('active');
   document.getElementById('modpack-page').classList.add('active');
 
   // Заполняем информацию
   document.getElementById('modpack-title').textContent = modpack.name;
-  document.getElementById('modpack-version-badge').textContent = `Minecraft ${modpack.minecraftVersion}`;
+  document.getElementById('modpack-version-tag').textContent = `Minecraft ${modpack.minecraftVersion}`;
   document.getElementById('modpack-description-text').textContent = modpack.description;
 
-  // Детальная информация - ИСПРАВЛЕНО: используем modLoader вместо loaderType
-  document.getElementById('modpack-minecraft-version').textContent = modpack.minecraftVersion;
-
-  const loaderType = modpack.modLoader || 'vanilla';
-  document.getElementById('modpack-loader-type').textContent =
-    loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
-
-  document.getElementById('modpack-mods-count').textContent = modpack.modsCount || 'Загружается...';
-  document.getElementById('modpack-install-status').textContent = modpack.installed ? 'Установлено' : 'Не установлено';
-
-  // Установка градиента для картинки
-  const imageLarge = document.getElementById('modpack-image-large');
-  imageLarge.style.background = `linear-gradient(135deg, ${getRandomGradient()})`;
-
-  // Бейджи статуса
-  const statusBadge = document.getElementById('modpack-status-badge');
-  if (modpack.installed) {
-    statusBadge.textContent = 'Установлено';
-    statusBadge.classList.add('installed');
+  // Установка градиента для баннера
+  const banner = document.getElementById('modpack-banner');
+  if (modpack.icon) {
+    banner.style.backgroundImage = `url(${modpack.icon})`;
+    banner.style.backgroundSize = 'cover';
   } else {
-    statusBadge.textContent = 'Не установлено';
-    statusBadge.classList.remove('installed');
+    banner.style.background = `linear-gradient(135deg, ${getRandomGradient()})`;
+  }
+
+  // Тег статуса
+  const statusTag = document.getElementById('modpack-status-tag');
+  if (modpack.installed) {
+    statusTag.textContent = 'Установлено';
+    statusTag.classList.add('installed');
+  } else {
+    statusTag.textContent = 'Не установлено';
+    statusTag.classList.remove('installed');
   }
 
   // Кнопки действий
@@ -163,40 +151,33 @@ function openModpackPage(modpack) {
     installBtn.style.display = 'flex';
     playBtn.style.display = 'none';
   }
-
-  // Активная сборка в меню
-  document.querySelectorAll('.modpack-item').forEach((item, index) => {
-    if (index === modpacks.indexOf(modpack)) {
-      item.classList.add('active');
-    } else {
-      item.classList.remove('active');
-    }
-  });
 }
 
 // Настройка навигации
 function setupNavigation() {
-  // Кнопка "Назад" со страницы сборки
-  document.getElementById('back-to-home').addEventListener('click', () => {
-    document.getElementById('modpack-page').classList.remove('active');
-    document.getElementById('home-page').classList.add('active');
+  // Навигация в sidebar
+  document.getElementById('nav-modpacks').addEventListener('click', () => {
+    document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+    document.getElementById('modpacks-grid-page').classList.add('active');
 
-    // Снимаем активность со всех сборок
-    document.querySelectorAll('.modpack-item').forEach(item => {
-      item.classList.remove('active');
-    });
+    // Обновляем активную кнопку
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('nav-modpacks').classList.add('active');
   });
 
-  // Кнопка "Назад" из настроек
-  document.getElementById('back-from-settings').addEventListener('click', () => {
-    document.getElementById('settings-page').classList.remove('active');
-    document.getElementById('home-page').classList.add('active');
-  });
-
-  // Плавающая кнопка настроек
-  document.getElementById('settings-btn').addEventListener('click', () => {
+  document.getElementById('nav-settings').addEventListener('click', () => {
     document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
     document.getElementById('settings-page').classList.add('active');
+
+    // Обновляем активную кнопку
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('nav-settings').classList.add('active');
+  });
+
+  // Кнопка "Назад" со страницы сборки
+  document.getElementById('back-to-modpacks').addEventListener('click', () => {
+    document.getElementById('modpack-page').classList.remove('active');
+    document.getElementById('modpacks-grid-page').classList.add('active');
   });
 
   // Кнопка установки/запуска
@@ -215,7 +196,6 @@ function setupNavigation() {
 
 // Настройка ссылок на соц сети
 function setupSocialLinks() {
-  // Здесь можно добавить реальные ссылки
   document.getElementById('social-discord').addEventListener('click', (e) => {
     e.preventDefault();
     // ipcRenderer.send('open-external', 'https://discord.gg/your-server');
@@ -240,6 +220,7 @@ function setupModsList() {
   const btnModsList = document.getElementById('btn-mods-list');
   const modsModal = document.getElementById('mods-modal');
   const modsModalClose = document.getElementById('mods-modal-close');
+  const modalBackdrop = document.getElementById('modal-backdrop');
 
   btnModsList.addEventListener('click', async () => {
     if (!currentModpack) return;
@@ -264,10 +245,8 @@ function setupModsList() {
     modsModal.classList.remove('active');
   });
 
-  modsModal.addEventListener('click', (e) => {
-    if (e.target === modsModal) {
-      modsModal.classList.remove('active');
-    }
+  modalBackdrop.addEventListener('click', () => {
+    modsModal.classList.remove('active');
   });
 }
 
@@ -296,7 +275,6 @@ async function loadModsFromGitHub(modpack) {
   const releaseData = await response.json();
 
   // Ищем в описании релиза информацию о модах
-  // или возвращаем базовую информацию
   const mods = parseModsFromRelease(releaseData);
 
   return mods;
@@ -345,7 +323,7 @@ function displayMods(mods) {
   if (mods.length === 0) {
     modsList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Модов не найдено</p>';
   } else {
-    mods.forEach((mod, index) => {
+    mods.forEach((mod) => {
       const modItem = document.createElement('div');
       modItem.className = 'mod-item';
 
@@ -374,10 +352,10 @@ function setupSettings() {
   const memorySlider = document.getElementById('memory-slider');
   const memoryValue = document.getElementById('memory-value');
   memorySlider.value = config.allocatedMemory || 2048;
-  memoryValue.textContent = memorySlider.value;
+  memoryValue.textContent = memorySlider.value + ' MB';
 
   memorySlider.addEventListener('input', (e) => {
-    memoryValue.textContent = e.target.value;
+    memoryValue.textContent = e.target.value + ' MB';
   });
 
   const windowSize = document.getElementById('window-size');
@@ -419,12 +397,12 @@ function setupSettings() {
       showNotification('Настройки сохранены!');
     } catch (error) {
       console.error('Failed to save config:', error);
-      showNotification('Ошибка сохранения настроек', true);
+      showNotification('Ошибка сохранения настроек', 'error');
     }
   });
 }
 
-// Установка сборки с прогрессом в кнопке - ИСПРАВЛЕНА ЛОГИКА ПРОГРЕССА
+// Установка сборки с прогрессом в кнопке
 async function installModpack(modpack) {
   const btn = document.getElementById('modpack-action-btn');
   const btnProgress = document.getElementById('btn-progress');
@@ -441,9 +419,8 @@ async function installModpack(modpack) {
   try {
     // Обработчик единого прогресса
     const progressHandler = (event, data) => {
-      // ВАЖНО: Обновляем прогресс только для текущей сборки!
       if (data.modpackId && data.modpackId !== modpack.id) {
-        return; // Игнорируем события для других сборок
+        return;
       }
 
       if (data.stage) {
@@ -461,9 +438,8 @@ async function installModpack(modpack) {
 
     ipcRenderer.on('download-progress', progressHandler);
     ipcRenderer.on('install-status', (event, data) => {
-      // ВАЖНО: Обновляем статус только для текущей сборки!
       if (data.modpackId && data.modpackId !== modpack.id) {
-        return; // Игнорируем события для других сборок
+        return;
       }
 
       if (data.status === 'downloading-java') {
@@ -505,7 +481,7 @@ async function installModpack(modpack) {
     console.error('Installation error:', error);
     btnProgress.classList.remove('active');
     btn.disabled = false;
-    showNotification('Ошибка установки: ' + error.message, true);
+    showNotification('Ошибка установки: ' + error.message, 'error');
   } finally {
     ipcRenderer.removeAllListeners('download-progress');
     ipcRenderer.removeAllListeners('install-status');
@@ -543,27 +519,23 @@ async function launchModpack(modpack) {
     console.error('Launch error:', error);
     playBtn.disabled = false;
     playBtn.querySelector('.btn-text').textContent = originalText;
-    showNotification('Ошибка запуска: ' + error.message, true);
+    showNotification('Ошибка запуска: ' + error.message, 'error');
   }
 }
 
 // Обновление UI
 function updateUI() {
-  const usernameDisplays = document.querySelectorAll('#username-display');
-  usernameDisplays.forEach(display => {
-    display.textContent = config.username || 'Player';
-  });
+  // Обновляем отображение имени в sidebar
+  const sidebarUsername = document.getElementById('username-display-sidebar');
+  if (sidebarUsername) {
+    sidebarUsername.textContent = config.username || 'Player';
+  }
+
   renderModpacks();
 }
 
 // Система toast-уведомлений
 function showNotification(message, type = 'success') {
-  // type может быть: 'success', 'error', 'info', 'warning'
-  // Для обратной совместимости: если второй параметр boolean
-  if (typeof type === 'boolean') {
-    type = type ? 'error' : 'success';
-  }
-
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;

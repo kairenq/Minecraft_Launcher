@@ -239,12 +239,336 @@ body {
 }
 
 /* ========================
+   СТРАНИЦА С HEADER
+   ======================== */
+.page-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.header-title h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -1px;
+}
+
+.header-title p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* ========================
+   ПОИСК И ФИЛЬТРЫ
+   ======================== */
+.search-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  min-width: 250px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 40px 10px 44px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-box input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.clear-search {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.clear-search:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.filter-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-btn svg {
+  flex-shrink: 0;
+}
+
+.view-controls {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  padding: 4px;
+}
+
+.view-btn {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.view-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.view-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ========================
+   SKELETON LOADING
+   ======================== */
+.skeleton-container {
+  display: none;
+}
+
+.skeleton-container.active {
+  display: grid;
+}
+
+.modpack-card.skeleton {
+  pointer-events: none;
+  cursor: default;
+}
+
+.modpack-card.skeleton:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+.skeleton-banner {
+  width: 100%;
+  height: 180px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-content {
+  padding: var(--spacing-md);
+}
+
+.skeleton-title {
+  width: 70%;
+  height: 18px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text {
+  width: 50%;
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-badge {
+  width: 90px;
+  height: 24px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ========================
+   ПУСТОЕ СОСТОЯНИЕ
+   ======================== */
+.empty-state {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-lg);
+  text-align: center;
+  min-height: 400px;
+}
+
+.empty-state.active {
+  display: flex;
+}
+
+.empty-state svg {
+  color: var(--text-tertiary);
+  margin-bottom: var(--spacing-md);
+}
+
+.empty-state h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ========================
    GRID СБОРОК
    ======================== */
 .modpacks-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--spacing-lg);
+}
+
+/* Размеры карточек */
+.modpacks-grid.size-small {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.modpacks-grid.size-small .modpack-card-banner {
+  height: 140px;
+}
+
+.modpacks-grid.size-large {
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: var(--spacing-xl);
+}
+
+.modpacks-grid.size-large .modpack-card-banner {
+  height: 220px;
+}
+
+/* Компактный вид */
+.modpacks-grid.view-compact {
+  grid-template-columns: 1fr;
+  gap: var(--spacing-md);
+}
+
+.modpacks-grid.view-compact .modpack-card {
+  display: flex;
+  flex-direction: row;
+}
+
+.modpacks-grid.view-compact .modpack-card-banner {
+  width: 200px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.modpacks-grid.view-compact .modpack-card-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .modpack-card {
@@ -364,11 +688,69 @@ body {
   justify-content: center;
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .modpack-header-info h1 {
   font-size: 28px;
   font-weight: 700;
-  margin-bottom: 12px;
   letter-spacing: -0.5px;
+}
+
+.favorite-btn {
+  width: 40px;
+  height: 40px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.favorite-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.favorite-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.favorite-btn.active svg {
+  fill: var(--accent);
+}
+
+.modpack-stats {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border);
+}
+
+.stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.stat-item svg {
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .modpack-meta {
@@ -435,6 +817,157 @@ body {
 }
 
 /* ========================
+   INSTALL PROGRESS STAGES
+   ======================== */
+.install-progress-wrapper {
+  display: none;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+}
+
+.install-progress-wrapper.active {
+  display: flex;
+}
+
+.install-stages {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin-bottom: var(--spacing-sm);
+}
+
+.install-stages::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.stage-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  transition: all 0.3s;
+}
+
+.stage-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.stage.active .stage-icon {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+  animation: pulse 2s infinite;
+}
+
+.stage.active .stage-label {
+  color: var(--accent);
+}
+
+.stage.completed .stage-icon {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--bg-primary);
+}
+
+.stage.completed .stage-label {
+  color: var(--success);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px var(--accent-dim);
+  }
+  50% {
+    box-shadow: 0 0 0 8px var(--accent-dim);
+  }
+}
+
+.install-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.install-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.install-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: progressShine 1.5s infinite;
+}
+
+@keyframes progressShine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.install-progress-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  min-height: 20px;
+}
+
+/* ========================
    КНОПКИ
    ======================== */
 .btn {
@@ -485,6 +1018,17 @@ body {
 .btn-outline:hover {
   background: var(--bg-tertiary);
   border-color: var(--border-light);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--bg-primary);
 }
 
 .btn-small {
@@ -653,6 +1197,56 @@ body {
   background: var(--accent-hover);
 }
 
+.setting-field input[type="color"] {
+  width: 100%;
+  height: 44px;
+  padding: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.setting-field input[type="color"]:hover {
+  border-color: var(--accent);
+}
+
+.setting-field input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.setting-field input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.checkbox-label span {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 .memory-hint {
   margin-top: 6px;
   font-size: 12px;
@@ -768,6 +1362,18 @@ body {
   overflow-y: auto;
 }
 
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--border);
+}
+
+.modal-small .modal-content {
+  max-width: 450px;
+}
+
 /* Список модов */
 .mods-loading {
   display: flex;
@@ -855,6 +1461,109 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ========================
+   КОНТЕКСТНОЕ МЕНЮ
+   ======================== */
+.context-menu {
+  position: fixed;
+  min-width: 180px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 1500;
+  animation: contextMenuSlideIn 0.15s ease;
+}
+
+@keyframes contextMenuSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.1s;
+  text-align: left;
+}
+
+.context-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.context-item svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.context-item:hover svg {
+  opacity: 1;
+}
+
+/* ========================
+   GLASSMORPHISM ЭФФЕКТ
+   ======================== */
+body.glassmorphism-enabled .modpack-card,
+body.glassmorphism-enabled .settings-card,
+body.glassmorphism-enabled .modpack-detail-header,
+body.glassmorphism-enabled .modpack-description-card,
+body.glassmorphism-enabled .modpack-actions-card,
+body.glassmorphism-enabled .social-links-footer,
+body.glassmorphism-enabled .sidebar,
+body.glassmorphism-enabled .search-box input,
+body.glassmorphism-enabled .filter-btn,
+body.glassmorphism-enabled .view-controls {
+  background: rgba(18, 18, 18, 0.6);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+body.glassmorphism-enabled.light-theme .modpack-card,
+body.glassmorphism-enabled.light-theme .settings-card,
+body.glassmorphism-enabled.light-theme .modpack-detail-header,
+body.glassmorphism-enabled.light-theme .modpack-description-card,
+body.glassmorphism-enabled.light-theme .modpack-actions-card,
+body.glassmorphism-enabled.light-theme .social-links-footer,
+body.glassmorphism-enabled.light-theme .sidebar,
+body.glassmorphism-enabled.light-theme .search-box input,
+body.glassmorphism-enabled.light-theme .filter-btn,
+body.glassmorphism-enabled.light-theme .view-controls {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+body.glassmorphism-enabled .modal-content,
+body.glassmorphism-enabled .context-menu {
+  background: rgba(18, 18, 18, 0.85);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+body.glassmorphism-enabled.light-theme .modal-content,
+body.glassmorphism-enabled.light-theme .context-menu {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
 /* ========================

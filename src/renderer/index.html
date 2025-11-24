@@ -52,13 +52,118 @@
       <!-- Страница со списком сборок -->
       <div class="page active" id="modpacks-grid-page">
         <div class="page-container">
-          <header class="page-header-simple">
-            <h1>Сборки</h1>
-            <p>Выберите сборку для установки или запуска</p>
+          <header class="page-header">
+            <div class="header-title">
+              <h1>Сборки</h1>
+              <p>Выберите сборку для установки или запуска</p>
+            </div>
+
+            <!-- Поиск и фильтры -->
+            <div class="search-filter-bar">
+              <div class="search-box">
+                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="search-input" placeholder="Поиск сборок..." />
+                <button class="clear-search" id="clear-search" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                  </svg>
+                  Все
+                </button>
+                <button class="filter-btn" data-filter="favorites">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                  Избранное
+                </button>
+                <button class="filter-btn" data-filter="installed">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  Установлено
+                </button>
+              </div>
+
+              <div class="view-controls">
+                <button class="view-btn active" data-view="grid" title="Сетка">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                  </svg>
+                </button>
+                <button class="view-btn" data-view="compact" title="Компактный">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </header>
 
+          <!-- Skeleton Loading -->
+          <div class="modpacks-grid skeleton-container" id="modpacks-skeleton" style="display: none;">
+            <div class="modpack-card skeleton">
+              <div class="skeleton-banner"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-badge"></div>
+              </div>
+            </div>
+            <div class="modpack-card skeleton">
+              <div class="skeleton-banner"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-badge"></div>
+              </div>
+            </div>
+            <div class="modpack-card skeleton">
+              <div class="skeleton-banner"></div>
+              <div class="skeleton-content">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-badge"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grid сборок -->
           <div class="modpacks-grid" id="modpacks-grid">
             <!-- Сборки будут загружены динамически -->
+          </div>
+
+          <!-- Пустое состояние -->
+          <div class="empty-state" id="empty-state" style="display: none;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <h3>Ничего не найдено</h3>
+            <p>Попробуйте изменить параметры поиска или фильтры</p>
           </div>
         </div>
       </div>
@@ -76,10 +181,32 @@
           <div class="modpack-detail-header">
             <div class="modpack-banner" id="modpack-banner"></div>
             <div class="modpack-header-info">
-              <h1 id="modpack-title">Название сборки</h1>
+              <div class="header-top">
+                <h1 id="modpack-title">Название сборки</h1>
+                <button class="favorite-btn" id="favorite-btn" title="Добавить в избранное">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                </button>
+              </div>
               <div class="modpack-meta">
                 <span class="meta-tag" id="modpack-version-tag">Minecraft 1.20.1</span>
                 <span class="meta-tag status" id="modpack-status-tag">Не установлено</span>
+              </div>
+              <div class="modpack-stats" id="modpack-stats">
+                <span class="stat-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <span id="stat-launches">0 запусков</span>
+                </span>
+                <span class="stat-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span id="stat-playtime">0 ч</span>
+                </span>
               </div>
             </div>
           </div>
@@ -91,15 +218,37 @@
             </div>
 
             <div class="modpack-actions-card">
+              <!-- Улучшенный прогресс установки -->
+              <div class="install-progress-wrapper" id="install-progress-wrapper" style="display: none;">
+                <div class="install-stages">
+                  <div class="stage" data-stage="java">
+                    <div class="stage-icon">1</div>
+                    <div class="stage-label">Java</div>
+                  </div>
+                  <div class="stage" data-stage="minecraft">
+                    <div class="stage-icon">2</div>
+                    <div class="stage-label">Minecraft</div>
+                  </div>
+                  <div class="stage" data-stage="modloader">
+                    <div class="stage-icon">3</div>
+                    <div class="stage-label">Модлоадер</div>
+                  </div>
+                  <div class="stage" data-stage="mods">
+                    <div class="stage-icon">4</div>
+                    <div class="stage-label">Моды</div>
+                  </div>
+                </div>
+                <div class="install-progress-bar">
+                  <div class="install-progress-fill" id="install-progress-fill"></div>
+                </div>
+                <div class="install-progress-text" id="install-progress-text">Подготовка...</div>
+              </div>
+
               <button class="btn btn-primary btn-install" id="modpack-action-btn">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                 </svg>
                 <span class="btn-text">Установить</span>
-                <div class="btn-progress-overlay" id="btn-progress">
-                  <div class="progress-bar" id="btn-progress-bar"></div>
-                  <span class="progress-text" id="btn-progress-text">0%</span>
-                </div>
               </button>
 
               <button class="btn btn-success btn-play" id="modpack-play-btn" style="display: none;">
@@ -115,6 +264,14 @@
                   <path d="M9 12h6m-6 4h6"/>
                 </svg>
                 <span class="btn-text">Список модов</span>
+              </button>
+
+              <button class="btn btn-outline btn-danger" id="btn-delete-modpack" style="display: none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span class="btn-text">Удалить</span>
               </button>
             </div>
           </div>
@@ -164,6 +321,27 @@
                   <option value="dark">Темная</option>
                   <option value="light">Светлая</option>
                 </select>
+              </div>
+
+              <div class="setting-field">
+                <label for="accent-color">Акцентный цвет</label>
+                <input type="color" id="accent-color" value="#00d9ff">
+              </div>
+
+              <div class="setting-field">
+                <label for="card-size">Размер карточек</label>
+                <select id="card-size">
+                  <option value="small">Маленький</option>
+                  <option value="medium" selected>Средний</option>
+                  <option value="large">Большой</option>
+                </select>
+              </div>
+
+              <div class="setting-field checkbox-field">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="glassmorphism">
+                  <span>Glassmorphism эффект</span>
+                </label>
               </div>
 
               <div class="setting-field">
@@ -233,6 +411,52 @@
         <div class="mods-list" id="mods-list"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Модальное окно подтверждения -->
+  <div class="modal" id="confirm-modal">
+    <div class="modal-backdrop" id="confirm-backdrop"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2 id="confirm-title">Подтвердите действие</h2>
+        <button class="modal-close" id="confirm-close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-message">Вы уверены?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="confirm-cancel">Отмена</button>
+        <button class="btn btn-danger" id="confirm-ok">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Контекстное меню -->
+  <div class="context-menu" id="context-menu" style="display: none;">
+    <button class="context-item" data-action="launch">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+      Запустить
+    </button>
+    <button class="context-item" data-action="favorite">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      В избранное
+    </button>
+    <button class="context-item" data-action="delete">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+      Удалить
+    </button>
   </div>
 
   <!-- Контейнер для toast-уведомлений -->

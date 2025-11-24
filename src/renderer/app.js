@@ -5,16 +5,27 @@ let config = {};
 let modpacks = [];
 let currentModpack = null;
 let isDarkTheme = true;
+let favorites = [];
+let searchQuery = '';
+let activeFilter = 'all';
+let currentViewMode = 'grid';
 
 // Инициализация приложения
 document.addEventListener('DOMContentLoaded', async () => {
   await loadConfig();
   await loadModpacks();
+  await loadFavorites();
   await loadSystemInfo();
   setupNavigation();
   setupSettings();
   setupSocialLinks();
   setupModsList();
+  setupSearchAndFilters();
+  setupViewControls();
+  setupContextMenu();
+  setupConfirmDialog();
+  setupCustomization();
+  setupKeyboardShortcuts();
   updateUI();
 });
 
@@ -37,11 +48,30 @@ async function loadConfig() {
 // Загрузка сборок
 async function loadModpacks() {
   try {
+    // Показываем skeleton loading
+    showSkeletonLoading();
+
     modpacks = await ipcRenderer.invoke('get-modpacks');
     console.log('Modpacks loaded:', modpacks);
+
+    // Небольшая задержка для демонстрации skeleton (можно убрать в продакшене)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    hideSkeletonLoading();
     renderModpacks();
   } catch (error) {
     console.error('Failed to load modpacks:', error);
+    hideSkeletonLoading();
+  }
+}
+
+// Загрузка избранного
+async function loadFavorites() {
+  try {
+    favorites = await ipcRenderer.invoke('get-favorites');
+    console.log('Favorites loaded:', favorites);
+  } catch (error) {
+    console.error('Failed to load favorites:', error);
   }
 }
 
@@ -67,10 +97,66 @@ function renderModpacks() {
   const grid = document.getElementById('modpacks-grid');
   grid.innerHTML = '';
 
-  modpacks.forEach((modpack) => {
+  // Фильтрация сборок
+  let filteredModpacks = modpacks.filter(modpack => {
+    // Поиск
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      if (!modpack.name.toLowerCase().includes(query) &&
+          !modpack.description.toLowerCase().includes(query)) {
+        return false;
+      }
+    }
+
+    // Фильтры
+    if (activeFilter === 'favorites') {
+      if (!favorites.includes(modpack.id)) return false;
+    } else if (activeFilter === 'installed') {
+      if (!modpack.installed) return false;
+    }
+
+    return true;
+  });
+
+  // Проверка пустого состояния
+  const emptyState = document.getElementById('empty-state');
+  if (filteredModpacks.length === 0) {
+    grid.style.display = 'none';
+    emptyState.style.display = 'flex';
+    emptyState.classList.add('active');
+    return;
+  } else {
+    grid.style.display = 'grid';
+    emptyState.style.display = 'none';
+    emptyState.classList.remove('active');
+  }
+
+  // Применяем размер карточек и режим просмотра
+  grid.className = 'modpacks-grid';
+  if (config.customization) {
+    if (config.customization.cardSize) {
+      grid.classList.add(`size-${config.customization.cardSize}`);
+    }
+    if (config.customization.viewMode === 'compact') {
+      grid.classList.add('view-compact');
+    }
+  }
+
+  filteredModpacks.forEach((modpack) => {
     const card = document.createElement('div');
     card.className = 'modpack-card';
-    card.onclick = () => openModpackPage(modpack);
+    card.dataset.modpackId = modpack.id;
+    card.onclick = (e) => {
+      // Игнорируем клики по правой кнопке мыши
+      if (e.button !== 0) return;
+      openModpackPage(modpack);
+    };
+
+    // Контекстное меню
+    card.oncontextmenu = (e) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, modpack);
+    };
 
     const gradient = getRandomGradient();
     const bannerStyle = modpack.icon
@@ -79,6 +165,8 @@ function renderModpacks() {
 
     const statusClass = modpack.installed ? 'installed' : '';
     const statusText = modpack.installed ? 'Установлено' : 'Не установлено';
+    const isFavorite = favorites.includes(modpack.id);
+    const favoriteIcon = isFavorite ? '★' : '☆';
 
     card.innerHTML = `
       <div class="modpack-card-banner" style="${bannerStyle}"></div>
@@ -109,7 +197,7 @@ function getRandomGradient() {
 }
 
 // Открытие страницы сборки
-function openModpackPage(modpack) {
+async function openModpackPage(modpack) {
   currentModpack = modpack;
 
   // Скрываем grid, показываем страницу сборки
@@ -140,16 +228,61 @@ function openModpackPage(modpack) {
     statusTag.classList.remove('installed');
   }
 
+  // Кнопка избранного
+  const favoriteBtn = document.getElementById('favorite-btn');
+  const isFavorite = favorites.includes(modpack.id);
+  if (isFavorite) {
+    favoriteBtn.classList.add('active');
+  } else {
+    favoriteBtn.classList.remove('active');
+  }
+
+  // Настройка обработчика избранного
+  favoriteBtn.onclick = async () => {
+    await toggleFavorite(modpack.id);
+  };
+
+  // Загрузка и отображение статистики
+  try {
+    const stats = await ipcRenderer.invoke('get-stats', modpack.id);
+    document.getElementById('stat-launches').textContent = `${stats.launches || 0} запусков`;
+    const hours = Math.floor((stats.playtime || 0) / 3600000);
+    document.getElementById('stat-playtime').textContent = `${hours} ч`;
+  } catch (error) {
+    console.error('Failed to load stats:', error);
+  }
+
   // Кнопки действий
   const installBtn = document.getElementById('modpack-action-btn');
   const playBtn = document.getElementById('modpack-play-btn');
+  const deleteBtn = document.getElementById('btn-delete-modpack');
 
   if (modpack.installed) {
     installBtn.style.display = 'none';
     playBtn.style.display = 'flex';
+    deleteBtn.style.display = 'flex';
   } else {
     installBtn.style.display = 'flex';
     playBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+  }
+
+  // Настройка обработчика удаления
+  deleteBtn.onclick = () => {
+    showConfirmation(
+      'Удалить сборку?',
+      `Вы уверены, что хотите удалить сборку "${modpack.name}"? Это действие нельзя отменить.`,
+      async () => {
+        await deleteModpack(modpack);
+      }
+    );
+  };
+
+  // Добавляем сборку в историю
+  try {
+    await ipcRenderer.invoke('add-to-history', modpack.id);
+  } catch (error) {
+    console.error('Failed to add to history:', error);
   }
 }
 
@@ -402,85 +535,129 @@ function setupSettings() {
   });
 }
 
-// Установка сборки с прогрессом в кнопке
+// Установка сборки с новым прогрессом
 async function installModpack(modpack) {
   const btn = document.getElementById('modpack-action-btn');
-  const btnProgress = document.getElementById('btn-progress');
-  const btnProgressBar = document.getElementById('btn-progress-bar');
-  const btnProgressText = document.getElementById('btn-progress-text');
+  const progressWrapper = document.getElementById('install-progress-wrapper');
+  const progressFill = document.getElementById('install-progress-fill');
+  const progressText = document.getElementById('install-progress-text');
 
-  // Показываем прогресс в кнопке
+  // Показываем новый прогресс
   btn.disabled = true;
-  btnProgress.classList.add('active');
+  btn.style.display = 'none';
+  progressWrapper.classList.add('active');
+  progressWrapper.style.display = 'flex';
 
-  let currentStage = '';
-  let stageProgress = 0;
+  // Стейджи установки
+  const stages = {
+    'downloading-java': 'java',
+    'downloading-minecraft': 'minecraft',
+    'installing-modloader': 'modloader',
+    'installing-archive': 'mods',
+    'installing-mods': 'mods'
+  };
+
+  let currentStageElement = null;
+
+  function updateStage(status) {
+    // Сбрасываем предыдущий
+    if (currentStageElement) {
+      currentStageElement.classList.remove('active');
+      currentStageElement.classList.add('completed');
+    }
+
+    // Активируем текущий
+    const stageName = stages[status];
+    if (stageName) {
+      currentStageElement = document.querySelector(`.stage[data-stage="${stageName}"]`);
+      if (currentStageElement) {
+        currentStageElement.classList.add('active');
+      }
+    }
+  }
 
   try {
-    // Обработчик единого прогресса
+    // Обработчик прогресса
     const progressHandler = (event, data) => {
-      if (data.modpackId && data.modpackId !== modpack.id) {
-        return;
-      }
+      if (data.modpackId && data.modpackId !== modpack.id) return;
+
+      const progress = data.percent || 0;
+      progressFill.style.width = progress + '%';
 
       if (data.stage) {
-        currentStage = data.stage;
-        stageProgress = data.percent || 0;
-      } else if (data.progress !== undefined) {
-        stageProgress = data.progress || 0;
+        progressText.textContent = data.stage;
       }
+    };
 
-      // Обновляем визуальный прогресс
-      const progress = Math.min(100, Math.max(0, stageProgress));
-      btnProgressBar.style.width = progress + '%';
-      btnProgressText.textContent = Math.floor(progress) + '%';
+    // Обработчик статуса
+    const statusHandler = (event, data) => {
+      if (data.modpackId && data.modpackId !== modpack.id) return;
+
+      if (data.status) {
+        updateStage(data.status);
+
+        const statusTexts = {
+          'downloading-java': 'Загрузка Java...',
+          'downloading-minecraft': 'Загрузка Minecraft...',
+          'installing-modloader': 'Установка модлоадера...',
+          'installing-archive': 'Установка архива сборки...',
+          'installing-mods': 'Загрузка модов...',
+          'completed': 'Завершено!'
+        };
+
+        progressText.textContent = statusTexts[data.status] || data.status;
+      }
     };
 
     ipcRenderer.on('download-progress', progressHandler);
-    ipcRenderer.on('install-status', (event, data) => {
-      if (data.modpackId && data.modpackId !== modpack.id) {
-        return;
-      }
-
-      if (data.status === 'downloading-java') {
-        btnProgressText.textContent = 'Java...';
-      } else if (data.status === 'downloading-minecraft') {
-        btnProgressText.textContent = 'Minecraft...';
-      } else if (data.status === 'installing-modloader') {
-        btnProgressText.textContent = 'Модлоадер...';
-      } else if (data.status === 'installing-archive') {
-        btnProgressText.textContent = 'Архив...';
-      } else if (data.status === 'installing-mods') {
-        btnProgressText.textContent = 'Моды...';
-      }
-    });
+    ipcRenderer.on('install-status', statusHandler);
 
     // Запуск установки
     await ipcRenderer.invoke('install-modpack', modpack.id);
+
+    // Завершение - отмечаем все стейджи как completed
+    document.querySelectorAll('.stage').forEach(stage => {
+      stage.classList.remove('active');
+      stage.classList.add('completed');
+    });
+
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Установка завершена!';
 
     // Обновляем статус сборки
     modpack.installed = true;
     await loadModpacks();
 
-    // Завершение
-    btnProgressBar.style.width = '100%';
-    btnProgressText.textContent = '100%';
-
     setTimeout(() => {
-      btnProgress.classList.remove('active');
-      btn.style.display = 'none';
+      progressWrapper.classList.remove('active');
+      progressWrapper.style.display = 'none';
       document.getElementById('modpack-play-btn').style.display = 'flex';
+      document.getElementById('btn-delete-modpack').style.display = 'flex';
       btn.disabled = false;
-      showNotification(`${modpack.name} успешно установлен!`);
 
-      // Обновляем страницу сборки
+      // Сбрасываем стейджи
+      document.querySelectorAll('.stage').forEach(stage => {
+        stage.classList.remove('active', 'completed');
+      });
+      progressFill.style.width = '0%';
+
+      showNotification(`${modpack.name} успешно установлен!`);
       openModpackPage(modpack);
-    }, 1000);
+    }, 1500);
 
   } catch (error) {
     console.error('Installation error:', error);
-    btnProgress.classList.remove('active');
+    progressWrapper.classList.remove('active');
+    progressWrapper.style.display = 'none';
+    btn.style.display = 'flex';
     btn.disabled = false;
+
+    // Сбрасываем стейджи
+    document.querySelectorAll('.stage').forEach(stage => {
+      stage.classList.remove('active', 'completed');
+    });
+    progressFill.style.width = '0%';
+
     showNotification('Ошибка установки: ' + error.message, 'error');
   } finally {
     ipcRenderer.removeAllListeners('download-progress');
@@ -580,6 +757,378 @@ function removeToast(toast) {
       toast.parentNode.removeChild(toast);
     }
   }, 300);
+}
+
+// ===== SKELETON LOADING =====
+function showSkeletonLoading() {
+  const skeleton = document.getElementById('modpacks-skeleton');
+  const grid = document.getElementById('modpacks-grid');
+  skeleton.style.display = 'grid';
+  skeleton.classList.add('active');
+  grid.style.display = 'none';
+}
+
+function hideSkeletonLoading() {
+  const skeleton = document.getElementById('modpacks-skeleton');
+  const grid = document.getElementById('modpacks-grid');
+  skeleton.style.display = 'none';
+  skeleton.classList.remove('active');
+  grid.style.display = 'grid';
+}
+
+// ===== ИЗБРАННОЕ =====
+async function toggleFavorite(modpackId) {
+  try {
+    const result = await ipcRenderer.invoke('toggle-favorite', modpackId);
+    favorites = await ipcRenderer.invoke('get-favorites');
+
+    // Обновляем UI
+    const favoriteBtn = document.getElementById('favorite-btn');
+    if (result.isFavorite) {
+      favoriteBtn.classList.add('active');
+      showNotification('Добавлено в избранное');
+    } else {
+      favoriteBtn.classList.remove('active');
+      showNotification('Удалено из избранного');
+    }
+
+    // Перерисовываем grid если активен фильтр избранного
+    if (activeFilter === 'favorites') {
+      renderModpacks();
+    }
+  } catch (error) {
+    console.error('Failed to toggle favorite:', error);
+    showNotification('Ошибка при работе с избранным', 'error');
+  }
+}
+
+// ===== ПОИСК И ФИЛЬТРЫ =====
+function setupSearchAndFilters() {
+  const searchInput = document.getElementById('search-input');
+  const clearSearch = document.getElementById('clear-search');
+  const filterBtns = document.querySelectorAll('.filter-btn');
+
+  // Поиск
+  searchInput.addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    renderModpacks();
+
+    // Показать/скрыть кнопку очистки
+    if (searchQuery) {
+      clearSearch.style.display = 'flex';
+    } else {
+      clearSearch.style.display = 'none';
+    }
+  });
+
+  // Очистка поиска
+  clearSearch.addEventListener('click', () => {
+    searchInput.value = '';
+    searchQuery = '';
+    clearSearch.style.display = 'none';
+    renderModpacks();
+  });
+
+  // Фильтры
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Снимаем активный класс со всех
+      filterBtns.forEach(b => b.classList.remove('active'));
+      // Активируем текущий
+      btn.classList.add('active');
+
+      activeFilter = btn.dataset.filter;
+      renderModpacks();
+    });
+  });
+}
+
+// ===== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ПРОСМОТРА =====
+function setupViewControls() {
+  const viewBtns = document.querySelectorAll('.view-btn');
+
+  viewBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      // Снимаем активный класс
+      viewBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const viewMode = btn.dataset.view;
+      currentViewMode = viewMode;
+
+      // Сохраняем в конфиг
+      try {
+        await ipcRenderer.invoke('update-customization', { viewMode });
+        config.customization = { ...config.customization, viewMode };
+        renderModpacks();
+      } catch (error) {
+        console.error('Failed to save view mode:', error);
+      }
+    });
+  });
+}
+
+// ===== КОНТЕКСТНОЕ МЕНЮ =====
+function setupContextMenu() {
+  const contextMenu = document.getElementById('context-menu');
+
+  // Закрытие при клике вне меню
+  document.addEventListener('click', (e) => {
+    if (!contextMenu.contains(e.target)) {
+      contextMenu.style.display = 'none';
+    }
+  });
+
+  // Обработчики действий
+  contextMenu.querySelectorAll('.context-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const action = item.dataset.action;
+      const modpackId = contextMenu.dataset.modpackId;
+      const modpack = modpacks.find(m => m.id === modpackId);
+
+      if (!modpack) return;
+
+      contextMenu.style.display = 'none';
+
+      if (action === 'launch') {
+        if (modpack.installed) {
+          await launchModpack(modpack);
+        } else {
+          showNotification('Сборка не установлена', 'warning');
+        }
+      } else if (action === 'favorite') {
+        await toggleFavorite(modpackId);
+        renderModpacks();
+      } else if (action === 'delete') {
+        if (modpack.installed) {
+          showConfirmation(
+            'Удалить сборку?',
+            `Вы уверены, что хотите удалить сборку "${modpack.name}"?`,
+            async () => {
+              await deleteModpack(modpack);
+            }
+          );
+        } else {
+          showNotification('Сборка не установлена', 'warning');
+        }
+      }
+    });
+  });
+}
+
+function showContextMenu(x, y, modpack) {
+  const contextMenu = document.getElementById('context-menu');
+  contextMenu.dataset.modpackId = modpack.id;
+
+  // Обновляем текст для избранного
+  const favoriteItem = contextMenu.querySelector('[data-action="favorite"]');
+  if (favorites.includes(modpack.id)) {
+    favoriteItem.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      Удалить из избранного
+    `;
+  } else {
+    favoriteItem.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      В избранное
+    `;
+  }
+
+  // Позиционирование
+  contextMenu.style.left = x + 'px';
+  contextMenu.style.top = y + 'px';
+  contextMenu.style.display = 'block';
+
+  // Проверяем, не вышло ли меню за пределы экрана
+  const rect = contextMenu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) {
+    contextMenu.style.left = (x - rect.width) + 'px';
+  }
+  if (rect.bottom > window.innerHeight) {
+    contextMenu.style.top = (y - rect.height) + 'px';
+  }
+}
+
+// ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ =====
+function setupConfirmDialog() {
+  const modal = document.getElementById('confirm-modal');
+  const backdrop = document.getElementById('confirm-backdrop');
+  const closeBtn = document.getElementById('confirm-close');
+  const cancelBtn = document.getElementById('confirm-cancel');
+
+  const closeModal = () => {
+    modal.classList.remove('active');
+  };
+
+  backdrop.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+}
+
+function showConfirmation(title, message, onConfirm) {
+  const modal = document.getElementById('confirm-modal');
+  const titleEl = document.getElementById('confirm-title');
+  const messageEl = document.getElementById('confirm-message');
+  const okBtn = document.getElementById('confirm-ok');
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+
+  // Удаляем старые обработчики
+  const newOkBtn = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+  // Добавляем новый обработчик
+  newOkBtn.addEventListener('click', async () => {
+    modal.classList.remove('active');
+    if (onConfirm) {
+      await onConfirm();
+    }
+  });
+
+  modal.classList.add('active');
+}
+
+// ===== УДАЛЕНИЕ СБОРКИ =====
+async function deleteModpack(modpack) {
+  try {
+    const fs = require('fs-extra');
+    const path = require('path');
+    const launcherDir = await ipcRenderer.invoke('get-launcher-dir');
+    const instanceDir = path.join(launcherDir, 'instances', modpack.id);
+
+    // Удаляем директорию
+    if (fs.existsSync(instanceDir)) {
+      await fs.remove(instanceDir);
+    }
+
+    // Обновляем статус
+    modpack.installed = false;
+    await loadModpacks();
+
+    showNotification(`Сборка "${modpack.name}" удалена`);
+
+    // Если мы на странице сборки, возвращаемся назад
+    if (document.getElementById('modpack-page').classList.contains('active')) {
+      document.getElementById('modpack-page').classList.remove('active');
+      document.getElementById('modpacks-grid-page').classList.add('active');
+    }
+  } catch (error) {
+    console.error('Failed to delete modpack:', error);
+    showNotification('Ошибка удаления сборки: ' + error.message, 'error');
+  }
+}
+
+// ===== КАСТОМИЗАЦИЯ =====
+function setupCustomization() {
+  // Акцентный цвет
+  const accentColor = document.getElementById('accent-color');
+  if (config.customization && config.customization.accentColor) {
+    accentColor.value = config.customization.accentColor;
+  }
+
+  accentColor.addEventListener('change', async (e) => {
+    const color = e.target.value;
+    document.documentElement.style.setProperty('--accent', color);
+
+    // Вычисляем hover цвет (немного темнее)
+    const rgb = parseInt(color.slice(1), 16);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = rgb & 0xff;
+    const hoverColor = `rgb(${Math.max(0, r - 30)}, ${Math.max(0, g - 30)}, ${Math.max(0, b - 30)})`;
+    document.documentElement.style.setProperty('--accent-hover', hoverColor);
+
+    try {
+      await ipcRenderer.invoke('update-customization', { accentColor: color });
+      config.customization = { ...config.customization, accentColor: color };
+    } catch (error) {
+      console.error('Failed to save accent color:', error);
+    }
+  });
+
+  // Размер карточек
+  const cardSize = document.getElementById('card-size');
+  if (config.customization && config.customization.cardSize) {
+    cardSize.value = config.customization.cardSize;
+  }
+
+  cardSize.addEventListener('change', async (e) => {
+    const size = e.target.value;
+    try {
+      await ipcRenderer.invoke('update-customization', { cardSize: size });
+      config.customization = { ...config.customization, cardSize: size };
+      renderModpacks();
+    } catch (error) {
+      console.error('Failed to save card size:', error);
+    }
+  });
+
+  // Glassmorphism
+  const glassmorphism = document.getElementById('glassmorphism');
+  if (config.customization && config.customization.glassmorphism) {
+    glassmorphism.checked = config.customization.glassmorphism;
+    document.body.classList.add('glassmorphism-enabled');
+  }
+
+  glassmorphism.addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    if (enabled) {
+      document.body.classList.add('glassmorphism-enabled');
+    } else {
+      document.body.classList.remove('glassmorphism-enabled');
+    }
+
+    try {
+      await ipcRenderer.invoke('update-customization', { glassmorphism: enabled });
+      config.customization = { ...config.customization, glassmorphism: enabled };
+    } catch (error) {
+      console.error('Failed to save glassmorphism:', error);
+    }
+  });
+}
+
+// ===== КЛАВИАТУРНЫЕ СОЧЕТАНИЯ =====
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + F - фокус на поиск
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      e.preventDefault();
+      const searchInput = document.getElementById('search-input');
+      searchInput.focus();
+      searchInput.select();
+    }
+
+    // Escape - закрыть модальные окна, контекстное меню
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal.active').forEach(modal => {
+        modal.classList.remove('active');
+      });
+      document.getElementById('context-menu').style.display = 'none';
+
+      // Вернуться к списку сборок
+      if (document.getElementById('modpack-page').classList.contains('active')) {
+        document.getElementById('modpack-page').classList.remove('active');
+        document.getElementById('modpacks-grid-page').classList.add('active');
+      }
+    }
+
+    // Ctrl/Cmd + 1 - Сборки
+    if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+      e.preventDefault();
+      document.getElementById('nav-modpacks').click();
+    }
+
+    // Ctrl/Cmd + 2 - Настройки
+    if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+      e.preventDefault();
+      document.getElementById('nav-settings').click();
+    }
+  });
 }
 
 // Обработка ошибок

@@ -558,35 +558,107 @@ class ModLoaderInstaller {
       if (mcpVersion) {
         const versionString = `${minecraftVersion}-${mcpVersion}`;
         clientLibPaths = [
+          `libraries/net/minecraft/client/${versionString}/client-${versionString}.jar`,
           `libraries/net/minecraft/client/${versionString}/client-${versionString}-extra.jar`
         ];
         console.log(`[FORGE] Используем стандартный MCP версии: ${mcpVersion}`);
       }
     }
 
-    // Создаём каждую клиентскую библиотеку
+    // Скачиваем каждую клиентскую библиотеку
     for (const libPath of clientLibPaths) {
       const relativePath = libPath.replace(/^libraries\//, '');
       const fullPath = path.join(this.librariesDir, relativePath.split('/').join(path.sep));
       const dirPath = path.dirname(fullPath);
 
-      // Проверяем существует ли уже
+      // Проверяем существует ли уже И имеет ли правильный размер
       if (fs.existsSync(fullPath)) {
-        console.log(`[FORGE] ✓ ${path.basename(fullPath)} уже существует`);
-        continue;
+        const stats = fs.statSync(fullPath);
+        const sizeInMB = stats.size / (1024 * 1024);
+
+        // Если файл слишком маленький (< 1 MB), удаляем его и перезагружаем
+        if (sizeInMB < 1) {
+          console.log(`[FORGE] ⚠️  ${path.basename(fullPath)} поврежден (${sizeInMB.toFixed(2)} MB), перезагрузка...`);
+          fs.unlinkSync(fullPath);
+        } else {
+          console.log(`[FORGE] ✓ ${path.basename(fullPath)} уже существует (${sizeInMB.toFixed(2)} MB)`);
+          continue;
+        }
       }
 
       await fs.ensureDir(dirPath);
 
-      // Определяем тип файла
+      // Определяем тип файла и URL для скачивания
       const fileName = path.basename(fullPath);
 
-      if (fileName.includes('-extra.jar')) {
-        // extra.jar содержит ресурсы из оригинального клиента
-        // Создаём пустой JAR с манифестом
-        console.log(`[FORGE] Создание ${fileName}...`);
-        await this.createMinimalJar(fullPath, 'Minecraft Client Extra Resources');
-        console.log(`[FORGE] ✓ ${fileName} создан`);
+      // КРИТИЧНО: Скачиваем настоящие JAR из Maven Forge вместо создания пустых
+      if (fileName.includes('client-')) {
+        // Извлекаем версию из имени файла (например, 1.18.2-20220404.173914)
+        const versionMatch = fileName.match(/client-([\d.-]+)(?:-extra)?\.jar/);
+        if (versionMatch) {
+          const clientVersion = versionMatch[1];
+          const isExtra = fileName.includes('-extra.jar');
+
+          // URL на Maven Forge
+          const jarName = isExtra ? `client-${clientVersion}-extra.jar` : `client-${clientVersion}.jar`;
+          const mavenUrl = `https://maven.minecraftforge.net/net/minecraft/client/${clientVersion}/${jarName}`;
+
+          console.log(`[FORGE] Скачивание ${fileName} из Maven Forge...`);
+          console.log(`[FORGE] URL: ${mavenUrl}`);
+
+          // Скачиваем с retry логикой
+          let retries = 5;
+          let success = false;
+
+          for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+              const response = await axios({
+                url: mavenUrl,
+                method: 'GET',
+                responseType: 'stream',
+                timeout: 120000, // 2 минуты для больших файлов
+                ...this.axiosConfig
+              });
+
+              const writer = fs.createWriteStream(fullPath);
+              await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+                response.data.pipe(writer);
+              });
+
+              // Проверяем размер файла после загрузки
+              const stats = fs.statSync(fullPath);
+              const sizeInMB = stats.size / (1024 * 1024);
+
+              if (sizeInMB < 1 && !isExtra) {
+                throw new Error(`Загруженный файл слишком мал: ${sizeInMB.toFixed(2)} MB (ожидалось ~15-20 MB)`);
+              }
+
+              console.log(`[FORGE] ✓ ${fileName} скачан (${sizeInMB.toFixed(2)} MB)`);
+              success = true;
+              break;
+
+            } catch (err) {
+              console.warn(`[FORGE] Попытка ${attempt + 1}/${retries} не удалась: ${err.message}`);
+
+              // Удаляем поврежденный файл если он был создан
+              if (fs.existsSync(fullPath)) {
+                fs.unlinkSync(fullPath);
+              }
+
+              if (attempt < retries - 1) {
+                const delay = 3000 * (attempt + 1); // 3s, 6s, 9s, 12s, 15s
+                console.warn(`[FORGE] Повторная попытка через ${delay/1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
+            }
+          }
+
+          if (!success) {
+            throw new Error(`Не удалось скачать ${fileName} после ${retries} попыток из ${mavenUrl}`);
+          }
+        }
       } else if (fileName.includes('-srg.jar')) {
         // srg.jar - это клиент с SRG названиями
         // Для простоты создаём пустой JAR (Forge должен работать и без него)
@@ -601,7 +673,7 @@ class ModLoaderInstaller {
       }
     }
 
-    console.log('[FORGE] ✓ Клиентские библиотеки созданы');
+    console.log('[FORGE] ✓ Клиентские библиотеки обработаны');
   }
 
   /**

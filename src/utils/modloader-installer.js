@@ -241,7 +241,7 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Проверка установки модлоадера
+   * Проверка установки модлоадера - ИСПРАВЛЕННАЯ
    */
   async checkInstalled(modLoader, minecraftVersion, modLoaderVersion) {
     if (modLoader === 'vanilla') {
@@ -269,12 +269,18 @@ class ModLoaderInstaller {
     }
 
     if (modLoader === 'forge') {
-      // Проверяем через ForgeInstaller
+      // Для Forge проверяем существование папки версии и JSON файла
       const forgeId = `${minecraftVersion}-forge-${modLoaderVersion}`;
       const forgeDir = path.join(this.versionsDir, forgeId);
+      const forgeJsonPath = path.join(forgeDir, `${forgeId}.json`);
       
-      return await fs.pathExists(forgeDir) && 
-             await fs.pathExists(path.join(forgeDir, `${forgeId}.json`));
+      // Проверяем что папка существует и в ней есть JSON файл
+      const dirExists = await fs.pathExists(forgeDir);
+      const jsonExists = await fs.pathExists(forgeJsonPath);
+      
+      console.log(`[CHECK] Forge ${forgeId}: dir=${dirExists}, json=${jsonExists}`);
+      
+      return dirExists && jsonExists;
     }
 
     return false;

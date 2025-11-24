@@ -118,6 +118,54 @@ ipcMain.handle('add-modpack', async (event, modpack) => {
   return { success: true };
 });
 
+// ===== Избранное =====
+ipcMain.handle('toggle-favorite', async (event, modpackId) => {
+  const isFavorite = configManager.toggleFavorite(modpackId);
+  return { isFavorite };
+});
+
+ipcMain.handle('get-favorites', async () => {
+  return configManager.getFavorites();
+});
+
+// ===== История =====
+ipcMain.handle('add-to-history', async (event, modpackId) => {
+  configManager.addToHistory(modpackId);
+  return { success: true };
+});
+
+ipcMain.handle('get-history', async (event, limit) => {
+  return configManager.getHistory(limit);
+});
+
+ipcMain.handle('clear-history', async () => {
+  configManager.clearHistory();
+  return { success: true };
+});
+
+// ===== Статистика =====
+ipcMain.handle('update-stats', async (event, modpackId, playtime) => {
+  configManager.updateStats(modpackId, playtime);
+  return { success: true };
+});
+
+ipcMain.handle('get-stats', async (event, modpackId) => {
+  return configManager.getStats(modpackId);
+});
+
+ipcMain.handle('get-all-stats', async () => {
+  return configManager.getAllStats();
+});
+
+// ===== Кастомизация =====
+ipcMain.handle('update-customization', async (event, updates) => {
+  return configManager.updateCustomization(updates);
+});
+
+ipcMain.handle('get-customization', async () => {
+  return configManager.getCustomization();
+});
+
 // Проверка установки Java
 ipcMain.handle('check-java', async () => {
   return await javaDownloader.checkJava();

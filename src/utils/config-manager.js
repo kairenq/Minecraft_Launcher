@@ -52,9 +52,61 @@ class ConfigManager {
         theme: 'dark',
         lastModpack: null,
         javaPath: null,
-        configVersion: 2 // Версия конфигурации для миграций
+        configVersion: 3, // Версия конфигурации для миграций
+
+        // Новые функции
+        favorites: [], // Избранные сборки (массив ID)
+        history: [], // История запусков {modpackId, timestamp, duration}
+        stats: {}, // Статистика по сборкам {modpackId: {launches: number, playtime: number}}
+
+        // Кастомизация
+        customization: {
+          accentColor: '#00d9ff', // Акцентный цвет
+          cardSize: 'medium', // small, medium, large
+          viewMode: 'grid', // grid, compact
+          backgroundImage: null, // Путь к фоновому изображению
+          glassmorphism: false, // Включить эффект glassmorphism
+          animations: true // Включить анимации
+        }
       };
       fs.writeJsonSync(this.configPath, defaultConfig, { spaces: 2 });
+    } else {
+      // Миграция существующей конфигурации
+      const config = fs.readJsonSync(this.configPath);
+      let needsUpdate = false;
+
+      if (!config.configVersion || config.configVersion < 3) {
+        // Добавляем новые поля если их нет
+        if (!config.favorites) {
+          config.favorites = [];
+          needsUpdate = true;
+        }
+        if (!config.history) {
+          config.history = [];
+          needsUpdate = true;
+        }
+        if (!config.stats) {
+          config.stats = {};
+          needsUpdate = true;
+        }
+        if (!config.customization) {
+          config.customization = {
+            accentColor: '#00d9ff',
+            cardSize: 'medium',
+            viewMode: 'grid',
+            backgroundImage: null,
+            glassmorphism: false,
+            animations: true
+          };
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          config.configVersion = 3;
+          fs.writeJsonSync(this.configPath, config, { spaces: 2 });
+          console.log('Config migrated to version 3');
+        }
+      }
     }
 
     // Обновление списка сборок - ВСЕГДА пересоздаем с актуальными версиями
@@ -130,6 +182,116 @@ class ConfigManager {
     const modpacks = this.getModpacks();
     const filtered = modpacks.filter(mp => mp.id !== id);
     fs.writeJsonSync(this.modpacksPath, filtered, { spaces: 2 });
+  }
+
+  // ===== Методы для работы с избранным =====
+
+  toggleFavorite(modpackId) {
+    const config = this.getConfig();
+    const favorites = config.favorites || [];
+    const index = favorites.indexOf(modpackId);
+
+    if (index > -1) {
+      favorites.splice(index, 1);
+    } else {
+      favorites.push(modpackId);
+    }
+
+    this.updateConfig({ favorites });
+    return favorites.includes(modpackId);
+  }
+
+  isFavorite(modpackId) {
+    const config = this.getConfig();
+    return (config.favorites || []).includes(modpackId);
+  }
+
+  getFavorites() {
+    const config = this.getConfig();
+    return config.favorites || [];
+  }
+
+  // ===== Методы для работы с историей =====
+
+  addToHistory(modpackId) {
+    const config = this.getConfig();
+    const history = config.history || [];
+
+    // Добавляем новую запись в историю
+    history.unshift({
+      modpackId,
+      timestamp: Date.now()
+    });
+
+    // Ограничиваем историю 100 записями
+    if (history.length > 100) {
+      history.splice(100);
+    }
+
+    this.updateConfig({ history });
+  }
+
+  getHistory(limit = 10) {
+    const config = this.getConfig();
+    const history = config.history || [];
+    return history.slice(0, limit);
+  }
+
+  clearHistory() {
+    this.updateConfig({ history: [] });
+  }
+
+  // ===== Методы для работы со статистикой =====
+
+  updateStats(modpackId, playtime = 0) {
+    const config = this.getConfig();
+    const stats = config.stats || {};
+
+    if (!stats[modpackId]) {
+      stats[modpackId] = {
+        launches: 0,
+        playtime: 0,
+        lastPlayed: Date.now()
+      };
+    }
+
+    stats[modpackId].launches += 1;
+    stats[modpackId].playtime += playtime;
+    stats[modpackId].lastPlayed = Date.now();
+
+    this.updateConfig({ stats });
+  }
+
+  getStats(modpackId) {
+    const config = this.getConfig();
+    const stats = config.stats || {};
+    return stats[modpackId] || { launches: 0, playtime: 0, lastPlayed: null };
+  }
+
+  getAllStats() {
+    const config = this.getConfig();
+    return config.stats || {};
+  }
+
+  // ===== Методы для работы с кастомизацией =====
+
+  updateCustomization(updates) {
+    const config = this.getConfig();
+    const customization = { ...config.customization, ...updates };
+    this.updateConfig({ customization });
+    return customization;
+  }
+
+  getCustomization() {
+    const config = this.getConfig();
+    return config.customization || {
+      accentColor: '#00d9ff',
+      cardSize: 'medium',
+      viewMode: 'grid',
+      backgroundImage: null,
+      glassmorphism: false,
+      animations: true
+    };
   }
 }
 

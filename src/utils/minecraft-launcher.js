@@ -143,32 +143,35 @@ class MinecraftLauncher {
       console.log('\n=== ИЗВЛЕЧЕНИЕ НАТИВНЫХ БИБЛИОТЕК ===');
       await this.extractNatives(versionData, nativesDir, logStream);
 
-      // Построение classpath
-      const libraries = await this.buildClasspath(versionData, process.platform);
+      // Построение classpath и modulepath
+      console.log('\n=== ПОСТРОЕНИЕ CLASSPATH И MODULEPATH ===');
+      const { classpath, modulepath } = await this.buildPaths(versionData, process.platform);
       
       // Добавляем JAR клиента для ванильного Minecraft
       if (modLoader === 'vanilla' || !modLoader) {
         const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
         if (fs.existsSync(versionJar)) {
-          libraries.push(versionJar);
+          classpath.push(versionJar);
         }
       }
 
       // Проверяем существование всех файлов в classpath
       console.log('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===');
-      const { missingFiles, nativesInClasspath } = await this.validateClasspath(libraries, logStream);
+      const { missingFiles, nativesInClasspath } = await this.validateClasspath(classpath, logStream);
 
       if (missingFiles.length > 0) {
         throw new Error(`Отсутствуют ${missingFiles.length} файлов библиотек. Попробуйте переустановить версию.`);
       }
 
       // Убираем natives и дубликаты из classpath
-      const filteredLibraries = this.filterClasspath(libraries, logStream);
+      const filteredLibraries = this.filterClasspath(classpath, logStream);
 
       const separator = process.platform === 'win32' ? ';' : ':';
-      const classpath = filteredLibraries.join(separator);
+      const finalClasspath = filteredLibraries.join(separator);
+      const finalModulepath = modulepath.join(separator);
 
       console.log(`✓ Финальный classpath: ${filteredLibraries.length} JAR файлов`);
+      console.log(`✓ Финальный modulepath: ${modulepath.length} JAR файлов`);
 
       // Подготовка аргументов запуска
       const { jvmArgs, gameArgs, mainClass } = await this.prepareLaunchArguments({
@@ -178,7 +181,8 @@ class MinecraftLauncher {
         memory,
         gameDir,
         nativesDir,
-        classpath,
+        classpath: finalClasspath,
+        modulepath: finalModulepath,
         isForge,
         libraries: filteredLibraries
       }, logStream);
@@ -193,13 +197,15 @@ class MinecraftLauncher {
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
       console.log('JVM аргументов:', jvmArgs.length);
       console.log('Classpath entries:', filteredLibraries.length);
+      console.log('Modulepath entries:', modulepath.length);
       console.log('Main class:', mainClass);
       console.log('Game аргументов:', gameArgs.length);
 
       // Записываем в лог
       logStream.write('\n=== ИСПОЛЬЗУЕТСЯ ПРЯМОЙ ЗАПУСК (spawn) ===\n');
       logStream.write(`Main class: ${mainClass}\n`);
-      logStream.write(`Classpath entries: ${filteredLibraries.length}\n\n`);
+      logStream.write(`Classpath entries: ${filteredLibraries.length}\n`);
+      logStream.write(`Modulepath entries: ${modulepath.length}\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('\nGAME ARGS:\n');
@@ -207,7 +213,7 @@ class MinecraftLauncher {
       logStream.write('='.repeat(80) + '\n\n');
 
       // Создаём BAT файл для отладки
-      await this.createDebugBatFile(gameDir, javaPath, jvmArgs, classpath, mainClass, gameArgs);
+      await this.createDebugBatFile(gameDir, javaPath, jvmArgs, mainClass, gameArgs);
 
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {
@@ -227,10 +233,11 @@ class MinecraftLauncher {
   }
 
   /**
-   * Построение classpath из библиотек версии
+   * Построение classpath и modulepath из библиотек версии
    */
-  async buildClasspath(versionData, osName) {
-    const libraries = [];
+  async buildPaths(versionData, osName) {
+    const classpath = [];
+    const modulepath = [];
 
     for (const lib of versionData.libraries) {
       let allowed = true;
@@ -269,13 +276,19 @@ class MinecraftLauncher {
         if (libPath && fs.existsSync(libPath)) {
           const libName = path.basename(libPath);
           if (!libName.includes('-natives-')) {
-            libraries.push(libPath);
+            // Для современных версий Forge, добавляем в modulepath
+            if (libName.includes('bootstraplauncher') || libName.includes('securejarhandler') || 
+                libName.includes('fmlcore') || libName.includes('fmlloader')) {
+              modulepath.push(libPath);
+            } else {
+              classpath.push(libPath);
+            }
           }
         }
       }
     }
 
-    return libraries;
+    return { classpath, modulepath };
   }
 
   /**
@@ -450,7 +463,7 @@ class MinecraftLauncher {
    * Подготовка аргументов запуска
    */
   async prepareLaunchArguments(options, logStream) {
-    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge } = options;
+    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
 
     const uuid = this.generateUUID(username);
 
@@ -475,13 +488,14 @@ class MinecraftLauncher {
       launcher_name: 'aureate-launcher',
       launcher_version: '1.0.0',
       classpath: classpath,
+      modulepath: modulepath,
       library_directory: this.librariesDir,
       classpath_separator: process.platform === 'win32' ? ';' : ':'
     };
 
     const jvmArgs = [];
 
-    // ТОЛЬКО базовые аргументы памяти
+    // Базовые аргументы памяти
     jvmArgs.push(`-Xmx${memory}M`);
     jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
@@ -492,6 +506,13 @@ class MinecraftLauncher {
     } else {
       // Только для старых версий добавляем natives path
       jvmArgs.push(`-Djava.library.path=${nativesDir}`);
+    }
+
+    // КРИТИЧЕСКИ ВАЖНО: Добавляем недостающие opens для Java 17+
+    if (modulepath && modulepath.length > 0) {
+      console.log('✓ Добавляем дополнительные аргументы для Java 17+');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang.invoke=ALL-UNNAMED');
     }
 
     const gameArgs = this.prepareGameArgs(versionData, variables);
@@ -603,7 +624,7 @@ class MinecraftLauncher {
   /**
    * Создание BAT файла для отладки
    */
-  async createDebugBatFile(gameDir, javaPath, jvmArgs, classpath, mainClass, gameArgs) {
+  async createDebugBatFile(gameDir, javaPath, jvmArgs, mainClass, gameArgs) {
     const batFilePath = path.join(gameDir, 'run_minecraft.bat');
     
     const batContent = `@echo off

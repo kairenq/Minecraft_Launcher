@@ -155,12 +155,13 @@ class MinecraftLauncher {
         }
       }
 
-      // Проверяем существование всех файлов в classpath
-      console.log('\n=== ПРОВЕРКА ФАЙЛОВ CLASSPATH ===');
-      const { missingFiles, nativesInClasspath } = await this.validateClasspath(classpath, logStream);
+      // Проверяем существование всех файлов в classpath и modulepath
+      console.log('\n=== ПРОВЕРКА ФАЙЛОВ ===');
+      const missingClasspath = await this.validateFiles(classpath, logStream, 'CLASSPATH');
+      const missingModulepath = await this.validateFiles(modulepath, logStream, 'MODULEPATH');
 
-      if (missingFiles.length > 0) {
-        throw new Error(`Отсутствуют ${missingFiles.length} файлов библиотек. Попробуйте переустановить версию.`);
+      if (missingClasspath.length > 0 || missingModulepath.length > 0) {
+        throw new Error(`Отсутствуют файлы библиотек. Попробуйте переустановить версию.`);
       }
 
       // Убираем natives и дубликаты из classpath
@@ -276,9 +277,8 @@ class MinecraftLauncher {
         if (libPath && fs.existsSync(libPath)) {
           const libName = path.basename(libPath);
           if (!libName.includes('-natives-')) {
-            // Для современных версий Forge, добавляем в modulepath
-            if (libName.includes('bootstraplauncher') || libName.includes('securejarhandler') || 
-                libName.includes('fmlcore') || libName.includes('fmlloader')) {
+            // Для современных версий Forge, добавляем системные библиотеки в modulepath
+            if (this.isModuleLibrary(libName)) {
               modulepath.push(libPath);
             } else {
               classpath.push(libPath);
@@ -289,6 +289,26 @@ class MinecraftLauncher {
     }
 
     return { classpath, modulepath };
+  }
+
+  /**
+   * Проверяем, является ли библиотека модулем (должна быть в modulepath)
+   */
+  isModuleLibrary(libName) {
+    const moduleLibraries = [
+      'bootstraplauncher',
+      'securejarhandler',
+      'fmlcore',
+      'fmlloader',
+      'asm-',
+      'asm.',
+      'asm-commons',
+      'asm-tree',
+      'asm-util',
+      'asm-analysis'
+    ];
+    
+    return moduleLibraries.some(moduleLib => libName.includes(moduleLib));
   }
 
   /**
@@ -307,6 +327,29 @@ class MinecraftLauncher {
     }
 
     return true;
+  }
+
+  /**
+   * Валидация файлов
+   */
+  async validateFiles(files, logStream, type) {
+    const missingFiles = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const exists = fs.existsSync(file);
+
+      if (!exists) {
+        missingFiles.push(file);
+        logStream.write(`[MISSING ${type}] ${file}\n`);
+      }
+    }
+
+    if (missingFiles.length > 0) {
+      console.error(`⚠️  Отсутствуют файлы в ${type}: ${missingFiles.length}`);
+    }
+
+    return missingFiles;
   }
 
   /**
@@ -404,37 +447,6 @@ class MinecraftLauncher {
 
     console.log(`Извлечено файлов: ${nativesExtracted}`);
     logStream.write(`[NATIVES] Total extracted: ${nativesExtracted} files\n`);
-  }
-
-  /**
-   * Валидация classpath
-   */
-  async validateClasspath(libraries, logStream) {
-    let missingFiles = [];
-    let nativesInClasspath = [];
-
-    for (let i = 0; i < libraries.length; i++) {
-      const lib = libraries[i];
-      const exists = fs.existsSync(lib);
-      const libName = path.basename(lib);
-
-      if (libName.includes('-natives-')) {
-        nativesInClasspath.push(libName);
-        logStream.write(`[WARNING] Natives in classpath: ${libName}\n`);
-      }
-
-      if (!exists) {
-        missingFiles.push(lib);
-        logStream.write(`[MISSING] ${lib}\n`);
-      }
-    }
-
-    if (nativesInClasspath.length > 0) {
-      console.error(`⚠️  КРИТИЧЕСКАЯ ОШИБКА: ${nativesInClasspath.length} natives JAR файлов в classpath!`);
-      logStream.write(`[CRITICAL ERROR] ${nativesInClasspath.length} natives in classpath!\n`);
-    }
-
-    return { missingFiles, nativesInClasspath };
   }
 
   /**

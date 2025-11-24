@@ -60,7 +60,6 @@ class MinecraftLauncher {
       // Определение ID версии в зависимости от модлоадера
       let versionId = version;
       let isForge = false;
-      let isModernForge = false;
 
       if (modLoader === 'fabric') {
         if (modLoaderVersion) {
@@ -82,17 +81,7 @@ class MinecraftLauncher {
         if (forgeVersion) {
           versionId = forgeVersion;
           isForge = true;
-          
-          // Определяем, является ли это современным Forge (1.17+)
-          const mcVersionMatch = version.match(/(\d+)\.(\d+)/);
-          if (mcVersionMatch) {
-            const major = parseInt(mcVersionMatch[1]);
-            const minor = parseInt(mcVersionMatch[2]);
-            isModernForge = major > 1 || (major === 1 && minor >= 17);
-          }
-          
           console.log('Используется Forge профиль:', versionId);
-          console.log('Современный Forge (1.17+):', isModernForge);
         } else {
           throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
         }
@@ -102,7 +91,6 @@ class MinecraftLauncher {
       logStream.write(`\n[LAUNCH] Final versionId: ${versionId}\n`);
       logStream.write(`[LAUNCH] modLoader: ${modLoader}\n`);
       logStream.write(`[LAUNCH] version: ${version}\n`);
-      logStream.write(`[LAUNCH] isModernForge: ${isModernForge}\n`);
 
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
@@ -192,15 +180,12 @@ class MinecraftLauncher {
         nativesDir,
         classpath,
         isForge,
-        isModernForge,
         libraries: filteredLibraries
       }, logStream);
 
       // Финальная команда запуска
       const allArgs = [
         ...jvmArgs,
-        '-cp',
-        classpath,
         mainClass,
         ...gameArgs
       ];
@@ -465,7 +450,7 @@ class MinecraftLauncher {
    * Подготовка аргументов запуска
    */
   async prepareLaunchArguments(options, logStream) {
-    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge, isModernForge } = options;
+    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge } = options;
 
     const uuid = this.generateUUID(username);
 
@@ -496,67 +481,16 @@ class MinecraftLauncher {
 
     const jvmArgs = [];
 
+    // ТОЛЬКО базовые аргументы памяти
     jvmArgs.push(`-Xmx${memory}M`);
     jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
-    // КРИТИЧЕСКИ ВАЖНО: Добавляем аргументы для Java 17+ и современного Forge
-    if (isModernForge) {
-      console.log('✓ Добавляем аргументы для современного Forge (Java 17+)');
-      
-      // Основные аргументы для Forge
-      jvmArgs.push('--add-modules');
-      jvmArgs.push('jdk.naming.dns');
-      jvmArgs.push('--add-modules');
-      jvmArgs.push('jdk.security.auth');
-      jvmArgs.push('--add-exports');
-      jvmArgs.push('java.base/sun.security.util=ALL-UNNAMED');
-      jvmArgs.push('--add-exports');
-      jvmArgs.push('java.base/com.sun.jndi.ldap=ALL-UNNAMED');
-      
-      // Критически важные opens для Forge
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util.jar=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang.reflect=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.io=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util.function=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util.concurrent=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.net=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.nio=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/sun.nio.ch=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/sun.nio.fs=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/sun.security.action=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/sun.util.calendar=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.security.jgss/sun.security.krb5=ALL-UNNAMED');
-      
-      // САМЫЙ ВАЖНЫЙ: opens для java.lang.invoke - решает основную проблему
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang.invoke=ALL-UNNAMED');
-      
-      logStream.write(`[JVM] Added modern Forge arguments for Java 17+\n`);
-    }
-
-    if (isForge) {
-      await this.loadForgeArguments(versionId, jvmArgs, variables, logStream);
-    }
-
+    // ВАЖНО: Для современного Forge используем ТОЛЬКО аргументы из версии JSON
     if (versionData.arguments && versionData.arguments.jvm) {
+      console.log('✓ Используем JVM аргументы из версии JSON');
       this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
     } else {
+      // Только для старых версий добавляем natives path
       jvmArgs.push(`-Djava.library.path=${nativesDir}`);
     }
 
@@ -567,116 +501,6 @@ class MinecraftLauncher {
       gameArgs,
       mainClass: versionData.mainClass
     };
-  }
-
-  /**
-   * Загрузка аргументов Forge из win_args.txt
-   */
-  async loadForgeArguments(versionId, jvmArgs, variables, logStream) {
-    const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
-    
-    const forgeFullVersion = versionId.replace(/-forge-/, '-');
-    const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
-
-    logStream.write(`[FORGE] Searching for: ${argsFilePath}\n`);
-
-    if (fs.existsSync(argsFilePath)) {
-      try {
-        const forgeArgsContent = await fs.readFile(argsFilePath, 'utf8');
-        logStream.write(`[FORGE] ✓ File exists!\n`);
-
-        const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
-        let hitMainClass = false;
-
-        forgeArgsParsed.forEach((arg, idx) => {
-          if (hitMainClass) return;
-
-          if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
-            hitMainClass = true;
-            return;
-          }
-
-          if (arg.startsWith('--') && !arg.startsWith('--add-')) {
-            hitMainClass = true;
-            return;
-          }
-
-          let processedArg = this.processForgeArgument(arg, variables);
-          jvmArgs.push(processedArg);
-        });
-
-        logStream.write(`[FORGE] ✓ Added ${forgeArgsParsed.length} JVM arguments from ${argsFileName}\n`);
-      } catch (err) {
-        console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
-      }
-    } else {
-      logStream.write(`[FORGE] File not found: ${argsFilePath}\n`);
-    }
-  }
-
-  /**
-   * Обработка аргументов Forge (замена путей)
-   */
-  processForgeArgument(arg, variables) {
-    let processedArg = arg;
-
-    if (arg.startsWith('-DlibraryDirectory=')) {
-      const eqIndex = arg.indexOf('=');
-      const paramValue = arg.substring(eqIndex + 1);
-      if (paramValue === 'libraries') {
-        processedArg = '-DlibraryDirectory=' + this.librariesDir;
-      }
-    } else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
-      processedArg = this.convertLibraryPaths(arg);
-    }
-
-    return processedArg;
-  }
-
-  /**
-   * Конвертация путей библиотек
-   */
-  convertLibraryPaths(arg) {
-    const convertPath = (p) => {
-      if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
-        let relativePath = p.replace(/^libraries[\/\\]/, '');
-        
-        if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
-          relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
-          relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
-        }
-
-        const normalizedPath = relativePath.split('/').join(path.sep);
-        return path.join(this.librariesDir, normalizedPath);
-      }
-      return p;
-    };
-
-    if (arg.includes('=')) {
-      const eqIndex = arg.indexOf('=');
-      const paramName = arg.substring(0, eqIndex + 1);
-      const paramValue = arg.substring(eqIndex + 1);
-
-      if (paramValue.includes(';') || paramValue.includes(':')) {
-        const separator = paramValue.includes(';') ? ';' : ':';
-        const paths = paramValue.split(separator);
-        const convertedPaths = paths.map(convertPath);
-        return paramName + convertedPaths.join(path.delimiter);
-      } else {
-        return paramName + convertPath(paramValue);
-      }
-    } else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
-      if (arg.includes(';') || arg.includes(':')) {
-        const separator = arg.includes(';') ? ';' : ':';
-        const paths = arg.split(separator);
-        const convertedPaths = paths.map(convertPath);
-        return convertedPaths.join(path.delimiter);
-      } else {
-        return convertPath(arg);
-      }
-    }
-
-    return arg;
   }
 
   /**
@@ -799,7 +623,7 @@ echo Starting Minecraft...
 echo.
 
 cd /d "${gameDir}"
-"${javaPath}" ${jvmArgs.join(' ')} -cp "${classpath}" ${mainClass} ${gameArgs.join(' ')}
+"${javaPath}" ${jvmArgs.join(' ')} ${mainClass} ${gameArgs.join(' ')}
 
 echo.
 echo ========================================

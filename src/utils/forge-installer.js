@@ -16,6 +16,10 @@ class ForgeInstaller {
     const forgeDir = path.join(this.versionsDir, forgeId);
     
     console.log(`[FORGE] Установка Forge ${forgeVersion} для Minecraft ${mcVersion}...`);
+    console.log(`[FORGE] Директория: ${forgeDir}`);
+    
+    // СОЗДАЕМ ПАПКУ ВЕРСИИ ПЕРЕД НАЧАЛОМ УСТАНОВКИ
+    await fs.ensureDir(forgeDir);
     
     // Создаем директории
     await this.createDirectories();
@@ -43,6 +47,9 @@ class ForgeInstaller {
     const fullVersion = `${mcVersion}-${forgeVersion}`;
     const forgeUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${fullVersion}/forge-${fullVersion}-installer.jar`;
     const installerPath = path.join(forgeDir, 'forge-installer.jar');
+    
+    console.log(`[FORGE] URL установщика: ${forgeUrl}`);
+    console.log(`[FORGE] Путь установщика: ${installerPath}`);
     
     // Скачиваем установщик
     await this.downloadFileWithProgress(forgeUrl, installerPath, onProgress);
@@ -388,6 +395,8 @@ class ForgeInstaller {
 
   downloadFileWithProgress(url, filePath, onProgress) {
     return new Promise((resolve, reject) => {
+      console.log(`[FORGE] Начинаем загрузку: ${url}`);
+      
       https.get(url, (response) => {
         if (response.statusCode !== 200) {
           reject(new Error(`Ошибка загрузки: ${response.statusCode}`));
@@ -396,6 +405,8 @@ class ForgeInstaller {
 
         const totalSize = parseInt(response.headers['content-length'], 10);
         let downloadedSize = 0;
+        
+        console.log(`[FORGE] Размер файла: ${totalSize} bytes`);
         
         const file = fs.createWriteStream(filePath);
         
@@ -413,10 +424,12 @@ class ForgeInstaller {
         
         file.on('finish', () => {
           file.close();
+          console.log(`[FORGE] ✓ Файл загружен: ${filePath}`);
           resolve();
         });
 
       }).on('error', (err) => {
+        console.error(`[FORGE] Ошибка загрузки: ${err.message}`);
         fs.remove(filePath).then(() => reject(err));
       });
     });

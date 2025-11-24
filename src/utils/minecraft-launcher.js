@@ -60,6 +60,7 @@ class MinecraftLauncher {
       // Определение ID версии в зависимости от модлоадера
       let versionId = version;
       let isForge = false;
+      let isModernForge = false;
 
       if (modLoader === 'fabric') {
         if (modLoaderVersion) {
@@ -81,20 +82,27 @@ class MinecraftLauncher {
         if (forgeVersion) {
           versionId = forgeVersion;
           isForge = true;
+          
+          // Определяем, является ли это современным Forge (1.17+)
+          const mcVersionMatch = version.match(/(\d+)\.(\d+)/);
+          if (mcVersionMatch) {
+            const major = parseInt(mcVersionMatch[1]);
+            const minor = parseInt(mcVersionMatch[2]);
+            isModernForge = major > 1 || (major === 1 && minor >= 17);
+          }
+          
           console.log('Используется Forge профиль:', versionId);
+          console.log('Современный Forge (1.17+):', isModernForge);
         } else {
           throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
         }
-      } else if (!modLoader && version.includes('forge')) {
-        console.log('⚠️  modLoader не указан, но версия содержит "forge" - автоопределение');
-        versionId = version;
-        isForge = true;
       }
 
       console.log('DEBUG: Финальный versionId:', versionId);
       logStream.write(`\n[LAUNCH] Final versionId: ${versionId}\n`);
       logStream.write(`[LAUNCH] modLoader: ${modLoader}\n`);
       logStream.write(`[LAUNCH] version: ${version}\n`);
+      logStream.write(`[LAUNCH] isModernForge: ${isModernForge}\n`);
 
       // Загрузка данных версии
       const versionJsonPath = path.join(this.versionsDir, versionId, `${versionId}.json`);
@@ -122,9 +130,17 @@ class MinecraftLauncher {
           const baseVersionData = await fs.readJson(baseVersionPath);
           console.log('✓ Загружен базовый профиль:', versionData.inheritsFrom);
 
-          // Объединяем библиотеки, аргументы и другие свойства
-          versionData = this.mergeVersionData(baseVersionData, versionData);
-          console.log(`✓ Объединены данные версий`);
+          // Объединяем библиотеки
+          const baseLibraries = baseVersionData.libraries || [];
+          const modLoaderLibraries = versionData.libraries || [];
+          versionData.libraries = [...baseLibraries, ...modLoaderLibraries];
+
+          // Наследуем assetIndex если не указан
+          if (!versionData.assetIndex && baseVersionData.assetIndex) {
+            versionData.assetIndex = baseVersionData.assetIndex;
+          }
+
+          console.log(`✓ Объединены библиотеки: ${baseLibraries.length} + ${modLoaderLibraries.length} = ${versionData.libraries.length}`);
         } else {
           console.warn(`⚠️  Базовый профиль не найден: ${baseVersionPath}`);
         }
@@ -161,17 +177,10 @@ class MinecraftLauncher {
       // Убираем natives и дубликаты из classpath
       const filteredLibraries = this.filterClasspath(libraries, logStream);
 
-      // ДЛЯ FORGE НЕ ФИЛЬТРУЕМ БИБЛИОТЕКИ - ОНИ ВСЕ НУЖНЫ В CLASSPATH!
-      let finalLibraries = filteredLibraries;
-      if (isForge) {
-        console.log(`[LAUNCHER] Forge detected, keeping ALL ${filteredLibraries.length} libraries in classpath`);
-        logStream.write(`[LAUNCHER] Forge detected - NO library filtering applied\n`);
-      }
-
       const separator = process.platform === 'win32' ? ';' : ':';
-      const classpath = finalLibraries.join(separator);
+      const classpath = filteredLibraries.join(separator);
 
-      console.log(`✓ Финальный classpath: ${finalLibraries.length} JAR файлов`);
+      console.log(`✓ Финальный classpath: ${filteredLibraries.length} JAR файлов`);
 
       // Подготовка аргументов запуска
       const { jvmArgs, gameArgs, mainClass } = await this.prepareLaunchArguments({
@@ -183,7 +192,8 @@ class MinecraftLauncher {
         nativesDir,
         classpath,
         isForge,
-        libraries: finalLibraries
+        isModernForge,
+        libraries: filteredLibraries
       }, logStream);
 
       // Финальная команда запуска
@@ -197,14 +207,14 @@ class MinecraftLauncher {
 
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
       console.log('JVM аргументов:', jvmArgs.length);
-      console.log('Classpath entries:', finalLibraries.length);
+      console.log('Classpath entries:', filteredLibraries.length);
       console.log('Main class:', mainClass);
       console.log('Game аргументов:', gameArgs.length);
 
       // Записываем в лог
       logStream.write('\n=== ИСПОЛЬЗУЕТСЯ ПРЯМОЙ ЗАПУСК (spawn) ===\n');
       logStream.write(`Main class: ${mainClass}\n`);
-      logStream.write(`Classpath entries: ${finalLibraries.length}\n\n`);
+      logStream.write(`Classpath entries: ${filteredLibraries.length}\n\n`);
       logStream.write('JVM ARGS:\n');
       jvmArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('\nGAME ARGS:\n');
@@ -229,30 +239,6 @@ class MinecraftLauncher {
     } catch (error) {
       callback(new Error(`Ошибка при подготовке запуска: ${error.message}`));
     }
-  }
-
-  /**
-   * Объединение данных базовой версии и версии модлоадера
-   */
-  mergeVersionData(baseData, modLoaderData) {
-    const merged = { ...baseData, ...modLoaderData };
-    
-    // Объединяем библиотеки
-    if (baseData.libraries && modLoaderData.libraries) {
-      merged.libraries = [...baseData.libraries, ...modLoaderData.libraries];
-    }
-    
-    // Объединяем аргументы JVM
-    if (baseData.arguments && baseData.arguments.jvm && modLoaderData.arguments && modLoaderData.arguments.jvm) {
-      merged.arguments.jvm = [...baseData.arguments.jvm, ...modLoaderData.arguments.jvm];
-    }
-    
-    // Объединяем игровые аргументы
-    if (baseData.arguments && baseData.arguments.game && modLoaderData.arguments && modLoaderData.arguments.game) {
-      merged.arguments.game = [...baseData.arguments.game, ...modLoaderData.arguments.game];
-    }
-
-    return merged;
   }
 
   /**
@@ -326,7 +312,7 @@ class MinecraftLauncher {
   }
 
   /**
-   * Извлечение нативных библиотек с учетом версии
+   * Извлечение нативных библиотек
    */
   async extractNatives(versionData, nativesDir, logStream) {
     let nativesExtracted = 0;
@@ -479,7 +465,7 @@ class MinecraftLauncher {
    * Подготовка аргументов запуска
    */
   async prepareLaunchArguments(options, logStream) {
-    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge, libraries } = options;
+    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge, isModernForge } = options;
 
     const uuid = this.generateUUID(username);
 
@@ -513,11 +499,62 @@ class MinecraftLauncher {
     jvmArgs.push(`-Xmx${memory}M`);
     jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
+    // КРИТИЧЕСКИ ВАЖНО: Добавляем аргументы для Java 17+ и современного Forge
+    if (isModernForge) {
+      console.log('✓ Добавляем аргументы для современного Forge (Java 17+)');
+      
+      // Основные аргументы для Forge
+      jvmArgs.push('--add-modules');
+      jvmArgs.push('jdk.naming.dns');
+      jvmArgs.push('--add-modules');
+      jvmArgs.push('jdk.security.auth');
+      jvmArgs.push('--add-exports');
+      jvmArgs.push('java.base/sun.security.util=ALL-UNNAMED');
+      jvmArgs.push('--add-exports');
+      jvmArgs.push('java.base/com.sun.jndi.ldap=ALL-UNNAMED');
+      
+      // Критически важные opens для Forge
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util.jar=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang.reflect=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.io=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util.function=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util.concurrent=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.net=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.nio=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/sun.nio.ch=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/sun.nio.fs=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/sun.security.action=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/sun.util.calendar=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.security.jgss/sun.security.krb5=ALL-UNNAMED');
+      
+      // САМЫЙ ВАЖНЫЙ: opens для java.lang.invoke - решает основную проблему
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang.invoke=ALL-UNNAMED');
+      
+      logStream.write(`[JVM] Added modern Forge arguments for Java 17+\n`);
+    }
+
     if (isForge) {
       await this.loadForgeArguments(versionId, jvmArgs, variables, logStream);
     }
 
-    if (versionData.arguments && versionData.arguments.jvm && !isForge) {
+    if (versionData.arguments && versionData.arguments.jvm) {
       this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
     } else {
       jvmArgs.push(`-Djava.library.path=${nativesDir}`);
@@ -572,6 +609,8 @@ class MinecraftLauncher {
       } catch (err) {
         console.error(`⚠️  Ошибка чтения ${argsFileName}:`, err.message);
       }
+    } else {
+      logStream.write(`[FORGE] File not found: ${argsFilePath}\n`);
     }
   }
 
@@ -689,7 +728,12 @@ class MinecraftLauncher {
     if (versionData.arguments && versionData.arguments.game) {
       for (const arg of versionData.arguments.game) {
         if (typeof arg === 'string') {
-          gameArgs.push(this.replaceVariables(arg, variables));
+          const replaced = this.replaceVariables(arg, variables);
+          // Заменяем переменные разрешения экрана на стандартные значения
+          const finalArg = replaced
+            .replace('${resolution_width}', '854')
+            .replace('${resolution_height}', '480');
+          gameArgs.push(finalArg);
         } else if (arg.rules) {
           let allowed = false;
           for (const rule of arg.rules) {
@@ -701,13 +745,23 @@ class MinecraftLauncher {
           }
           if (allowed && arg.value) {
             const values = Array.isArray(arg.value) ? arg.value : [arg.value];
-            values.forEach(v => gameArgs.push(this.replaceVariables(v, variables)));
+            values.forEach(v => {
+              const replaced = this.replaceVariables(v, variables)
+                .replace('${resolution_width}', '854')
+                .replace('${resolution_height}', '480');
+              gameArgs.push(replaced);
+            });
           }
         }
       }
     } else if (versionData.minecraftArguments) {
       const args = versionData.minecraftArguments.split(' ');
-      args.forEach(arg => gameArgs.push(this.replaceVariables(arg, variables)));
+      args.forEach(arg => {
+        const replaced = this.replaceVariables(arg, variables)
+          .replace('${resolution_width}', '854')
+          .replace('${resolution_height}', '480');
+        gameArgs.push(replaced);
+      });
     }
 
     return gameArgs;
@@ -802,6 +856,7 @@ pause >nul
         console.log(`✓ Minecraft завершён успешно (работал ${(runTime/1000).toFixed(1)}с)`);
       } else {
         console.log(`✗ Minecraft завершён с кодом ${code} (работал ${(runTime/1000).toFixed(1)}с)`);
+        console.log('Проверьте логи:', logFile);
       }
     });
 

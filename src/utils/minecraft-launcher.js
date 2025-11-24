@@ -13,7 +13,6 @@ class MinecraftLauncher {
   }
 
   generateUUID(username) {
-    // Генерация детерминированного UUID на основе имени пользователя
     const hash = crypto.createHash('md5').update(username).digest('hex');
     return `${hash.substr(0, 8)}-${hash.substr(8, 4)}-${hash.substr(12, 4)}-${hash.substr(16, 4)}-${hash.substr(20, 12)}`;
   }
@@ -63,11 +62,9 @@ class MinecraftLauncher {
       let isForge = false;
 
       if (modLoader === 'fabric') {
-        // Fabric: fabric-loader-{loaderVersion}-{minecraftVersion}
         if (modLoaderVersion) {
           versionId = `fabric-loader-${modLoaderVersion}-${version}`;
         } else {
-          // Ищем любую fabric версию для этого Minecraft
           const versions = fs.readdirSync(this.versionsDir);
           const fabricVersion = versions.find(v => v.startsWith('fabric-loader-') && v.endsWith(`-${version}`));
           if (fabricVersion) {
@@ -79,7 +76,6 @@ class MinecraftLauncher {
         console.log('Используется Fabric профиль:', versionId);
 
       } else if (modLoader === 'forge') {
-        // Forge: ищем forge профиль
         const versions = fs.readdirSync(this.versionsDir);
         const forgeVersion = versions.find(v => v.includes('forge') && v.includes(version));
         if (forgeVersion) {
@@ -90,7 +86,6 @@ class MinecraftLauncher {
           throw new Error(`Forge не установлен для Minecraft ${version}. Установите сборку заново.`);
         }
       } else if (!modLoader && version.includes('forge')) {
-        // Если modLoader не указан, но version содержит 'forge' - автоопределение
         console.log('⚠️  modLoader не указан, но версия содержит "forge" - автоопределение');
         versionId = version;
         isForge = true;
@@ -127,7 +122,6 @@ class MinecraftLauncher {
           const baseVersionData = await fs.readJson(baseVersionPath);
           console.log('✓ Загружен базовый профиль:', versionData.inheritsFrom);
 
-          // Объединяем библиотеки: сначала базовые, потом Forge/Fabric
           const baseLibraries = baseVersionData.libraries || [];
           const modLoaderLibraries = versionData.libraries || [];
           versionData.libraries = [...baseLibraries, ...modLoaderLibraries];
@@ -136,13 +130,11 @@ class MinecraftLauncher {
           console.log(`Библиотек ${modLoader}: ${modLoaderLibraries.length}`);
           console.log(`Всего библиотек: ${versionData.libraries.length}`);
 
-          // Наследуем assetIndex если его нет
           if (!versionData.assetIndex && baseVersionData.assetIndex) {
             versionData.assetIndex = baseVersionData.assetIndex;
             console.log('✓ Унаследован assetIndex:', versionData.assetIndex.id);
           }
 
-          // Наследуем другие поля если нужно
           if (!versionData.assets && baseVersionData.assets) {
             versionData.assets = baseVersionData.assets;
           }
@@ -182,10 +174,11 @@ class MinecraftLauncher {
       // Убираем natives и дубликаты из classpath
       const filteredLibraries = this.filterClasspath(libraries, logStream);
 
-      // Для Forge 1.17+: убираем модульные библиотеки из classpath
+      // ДЛЯ FORGE НЕ ФИЛЬТРУЕМ БИБЛИОТЕКИ - ОНИ ВСЕ НУЖНЫ В CLASSPATH!
       let finalLibraries = filteredLibraries;
       if (isForge) {
-        finalLibraries = this.filterForgeModuleLibs(filteredLibraries, logStream);
+        console.log(`[LAUNCHER] Forge detected, keeping ALL ${filteredLibraries.length} libraries in classpath`);
+        logStream.write(`[LAUNCHER] Forge detected - NO library filtering applied\n`);
       }
 
       const separator = process.platform === 'win32' ? ';' : ':';
@@ -258,7 +251,6 @@ class MinecraftLauncher {
     const libraries = [];
 
     for (const lib of versionData.libraries) {
-      // Проверка правил для библиотеки
       let allowed = true;
 
       if (lib.rules) {
@@ -279,13 +271,10 @@ class MinecraftLauncher {
       if (allowed) {
         let libPath = null;
 
-        // Способ 1: Есть downloads.artifact (стандарт Mojang)
         if (lib.downloads && lib.downloads.artifact) {
           const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
           libPath = path.join(this.librariesDir, normalizedPath);
-        }
-        // Способ 2: Только name (Forge/Fabric библиотеки)
-        else if (lib.name) {
+        } else if (lib.name) {
           const parts = lib.name.split(':');
           if (parts.length >= 3) {
             const [group, artifact, version] = parts;
@@ -296,7 +285,6 @@ class MinecraftLauncher {
         }
 
         if (libPath && fs.existsSync(libPath)) {
-          // Не добавляем natives в classpath
           const libName = path.basename(libPath);
           if (!libName.includes('-natives-')) {
             libraries.push(libPath);
@@ -332,7 +320,6 @@ class MinecraftLauncher {
   async extractNatives(nativesDir, logStream) {
     let nativesExtracted = 0;
 
-    // Находим все JAR файлы с natives
     const findNativeJars = (dir) => {
       const results = [];
       const items = fs.readdirSync(dir);
@@ -354,7 +341,6 @@ class MinecraftLauncher {
     const allNativeJars = findNativeJars(this.librariesDir);
     console.log(`Найдено JAR файлов с natives: ${allNativeJars.length}`);
 
-    // Фильтруем для текущей платформы
     const platformSuffix = process.platform === 'win32' ? 'windows' :
                           process.platform === 'darwin' ? 'macos' : 'linux';
 
@@ -362,12 +348,10 @@ class MinecraftLauncher {
       path.basename(jar).includes(`-natives-${platformSuffix}`)
     );
 
-    // Если не нашли для текущей платформы - берём все
     if (nativeJarsForPlatform.length === 0) {
       nativeJarsForPlatform = allNativeJars;
     }
 
-    // Извлекаем natives из каждого JAR
     for (const nativePath of nativeJarsForPlatform) {
       const baseName = path.basename(nativePath);
       logStream.write(`[NATIVES] Extracting: ${baseName}\n`);
@@ -381,7 +365,6 @@ class MinecraftLauncher {
             const entries = zip.entries();
             let extractedFiles = 0;
 
-            // Извлекаем только нативные библиотеки
             const nativeExtensions = process.platform === 'win32' ? ['.dll'] :
                                     process.platform === 'darwin' ? ['.dylib', '.jnilib'] :
                                     ['.so'];
@@ -437,7 +420,6 @@ class MinecraftLauncher {
       const exists = fs.existsSync(lib);
       const libName = path.basename(lib);
 
-      // Проверяем не попали ли natives в classpath
       if (libName.includes('-natives-')) {
         nativesInClasspath.push(libName);
         logStream.write(`[WARNING] Natives in classpath: ${libName}\n`);
@@ -461,7 +443,6 @@ class MinecraftLauncher {
    * Фильтрация classpath (убираем natives и дубликаты)
    */
   filterClasspath(libraries, logStream) {
-    // Убираем natives
     const withoutNatives = libraries.filter(lib => {
       const libName = path.basename(lib);
       const isNative = libName.includes('-natives-');
@@ -471,7 +452,6 @@ class MinecraftLauncher {
       return !isNative;
     });
 
-    // Убираем дубликаты
     const uniqueLibraries = [...new Set(withoutNatives)];
     if (uniqueLibraries.length < withoutNatives.length) {
       const duplicates = withoutNatives.length - uniqueLibraries.length;
@@ -482,46 +462,18 @@ class MinecraftLauncher {
   }
 
   /**
-   * Фильтрация модульных библиотек Forge
-   */
-  filterForgeModuleLibs(libraries, logStream) {
-    const modulePathLibs = [
-      'fmlloader', 'fmlcore', 'javafmllanguage', 'lowcodelanguage', 'mclanguage',
-      'bootstraplauncher', 'securejarhandler', 'asm-9.3.jar', 'asm-commons', 
-      'asm-tree', 'asm-util', 'asm-analysis', 'forgespi',
-      'lwjgl-3.2.2.jar', 'lwjgl-jemalloc', 'lwjgl-openal', 'lwjgl-opengl',
-      'lwjgl-glfw', 'lwjgl-stb', 'lwjgl-tinyfd'
-    ];
-
-    const filtered = libraries.filter(lib => {
-      const libName = path.basename(lib);
-      const isModulePath = modulePathLibs.some(moduleName => libName.includes(moduleName));
-      if (isModulePath) {
-        logStream.write(`[FILTER] Excluded from classpath (module path): ${libName}\n`);
-      }
-      return !isModulePath;
-    });
-
-    console.log(`✓ Убрано ${libraries.length - filtered.length} модульных библиотек из classpath`);
-    return filtered;
-  }
-
-  /**
    * Подготовка аргументов запуска
    */
   async prepareLaunchArguments(options, logStream) {
     const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, isForge, libraries } = options;
 
-    // Генерация UUID для offline режима
     const uuid = this.generateUUID(username);
 
-    // Определяем assetIndex
     let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
     if (versionData.assetIndex && versionData.assetIndex.id) {
       assetIndexName = versionData.assetIndex.id;
     }
 
-    // Переменные для замены
     const variables = {
       auth_player_name: username,
       version_name: versionId,
@@ -542,27 +494,21 @@ class MinecraftLauncher {
       classpath_separator: process.platform === 'win32' ? ';' : ':'
     };
 
-    // JVM аргументы
     const jvmArgs = [];
 
-    // Базовые JVM аргументы
     jvmArgs.push(`-Xmx${memory}M`);
     jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
-    // Для Forge 1.17+: загружаем аргументы из win_args.txt
     if (isForge) {
       await this.loadForgeArguments(versionId, jvmArgs, variables, logStream);
     }
 
-    // Аргументы из версии (если есть и не Forge)
     if (versionData.arguments && versionData.arguments.jvm && !isForge) {
       this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
     } else {
-      // Старый формат
       jvmArgs.push(`-Djava.library.path=${nativesDir}`);
     }
 
-    // Game аргументы
     const gameArgs = this.prepareGameArgs(versionData, variables);
 
     return {
@@ -578,7 +524,6 @@ class MinecraftLauncher {
   async loadForgeArguments(versionId, jvmArgs, variables, logStream) {
     const argsFileName = process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt';
     
-    // Из versionId извлекаем версию Forge
     const forgeFullVersion = versionId.replace(/-forge-/, '-');
     const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', forgeFullVersion, argsFileName);
 
@@ -592,23 +537,19 @@ class MinecraftLauncher {
         const forgeArgsParsed = forgeArgsContent.trim().split(/\s+/);
         let hitMainClass = false;
 
-        // Парсим аргументы до main class
         forgeArgsParsed.forEach((arg, idx) => {
           if (hitMainClass) return;
 
-          // Останавливаемся на main class
           if (arg.match(/^(cpw\.mods\.|net\.minecraftforge\.|com\.mojang\.)/) && !arg.startsWith('-')) {
             hitMainClass = true;
             return;
           }
 
-          // Останавливаемся на program arguments
           if (arg.startsWith('--') && !arg.startsWith('--add-')) {
             hitMainClass = true;
             return;
           }
 
-          // Заменяем относительные пути на абсолютные
           let processedArg = this.processForgeArgument(arg, variables);
           jvmArgs.push(processedArg);
         });
@@ -626,16 +567,13 @@ class MinecraftLauncher {
   processForgeArgument(arg, variables) {
     let processedArg = arg;
 
-    // Заменяем libraryDirectory
     if (arg.startsWith('-DlibraryDirectory=')) {
       const eqIndex = arg.indexOf('=');
       const paramValue = arg.substring(eqIndex + 1);
       if (paramValue === 'libraries') {
         processedArg = '-DlibraryDirectory=' + this.librariesDir;
       }
-    }
-    // Заменяем пути с libraries/
-    else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
+    } else if (arg.includes('libraries/') || arg.includes('libraries\\')) {
       processedArg = this.convertLibraryPaths(arg);
     }
 
@@ -650,7 +588,6 @@ class MinecraftLauncher {
       if (p.startsWith('libraries/') || p.startsWith('libraries\\')) {
         let relativePath = p.replace(/^libraries[\/\\]/, '');
         
-        // Заменяем server на client для клиентского запуска
         if (relativePath.includes('net/minecraft/server/') || relativePath.includes('net\\minecraft\\server\\')) {
           relativePath = relativePath.replace(/net[\/\\]minecraft[\/\\]server[\/\\]/g, 'net/minecraft/client/');
           relativePath = relativePath.replace(/server-(\d+\.\d+(?:\.\d+)?-)/g, 'client-$1');
@@ -662,7 +599,6 @@ class MinecraftLauncher {
       return p;
     };
 
-    // -D параметр с путями
     if (arg.includes('=')) {
       const eqIndex = arg.indexOf('=');
       const paramName = arg.substring(0, eqIndex + 1);
@@ -676,9 +612,7 @@ class MinecraftLauncher {
       } else {
         return paramName + convertPath(paramValue);
       }
-    }
-    // Обычный аргумент с путями
-    else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
+    } else if (arg.startsWith('libraries/') || arg.startsWith('libraries\\')) {
       if (arg.includes(';') || arg.includes(':')) {
         const separator = arg.includes(';') ? ';' : ':';
         const paths = arg.split(separator);
@@ -758,7 +692,6 @@ class MinecraftLauncher {
         }
       }
     } else if (versionData.minecraftArguments) {
-      // Старый формат
       const args = versionData.minecraftArguments.split(' ');
       args.forEach(arg => gameArgs.push(this.replaceVariables(arg, variables)));
     }
@@ -858,7 +791,6 @@ pause >nul
       }
     });
 
-    // Проверка стабильности процесса
     setTimeout(() => {
       try {
         process.kill(gameProcess.pid, 0);

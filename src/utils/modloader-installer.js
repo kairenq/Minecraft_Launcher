@@ -2,14 +2,14 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const pLimit = require('p-limit');
-const ForgeInstaller = require('./forge-installer'); // ИСПОЛЬЗУЕМ ForgeInstaller вместо ForgeDownloader
+const ForgeInstaller = require('./forge-installer');
 
 class ModLoaderInstaller {
   constructor(launcherDir) {
     this.launcherDir = launcherDir;
     this.versionsDir = path.join(launcherDir, 'versions');
     this.librariesDir = path.join(launcherDir, 'libraries');
-    this.forgeInstaller = new ForgeInstaller(launcherDir); // ИСПОЛЬЗУЕМ ForgeInstaller
+    this.forgeInstaller = new ForgeInstaller(launcherDir);
 
     fs.ensureDirSync(this.versionsDir);
     fs.ensureDirSync(this.librariesDir);
@@ -174,7 +174,7 @@ class ModLoaderInstaller {
         console.log(`[FORGE] Выбрана версия: ${forgeVersion}`);
       }
 
-      // ИСПОЛЬЗУЕМ ForgeInstaller для установки
+      // ПРЯМОЙ ВЫЗОВ ForgeInstaller - больше никаких промежуточных методов
       const versionId = await this.forgeInstaller.installForge(
         minecraftVersion, 
         forgeVersion, 

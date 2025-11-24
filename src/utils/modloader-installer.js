@@ -511,11 +511,18 @@ class ModLoaderInstaller {
    * Эти файлы обычно создаются Forge installer из оригинального клиента
    */
   async createMinecraftClientLibraries(minecraftVersion, forgeVersion) {
-    console.log('[FORGE] Создание клиентских библиотек Minecraft...');
+    console.log('[FORGE] ========================================');
+    console.log('[FORGE] НАЧАЛО: Создание клиентских библиотек Minecraft');
+    console.log(`[FORGE] Версия Minecraft: ${minecraftVersion}`);
+    console.log(`[FORGE] Версия Forge: ${forgeVersion}`);
+    console.log('[FORGE] ========================================');
 
     const fullForgeVersion = `${minecraftVersion}-${forgeVersion}`;
     const argsFilePath = path.join(this.librariesDir, 'net', 'minecraftforge', 'forge', fullForgeVersion,
       process.platform === 'win32' ? 'win_args.txt' : 'unix_args.txt');
+
+    console.log(`[FORGE] Путь к args файлу: ${argsFilePath}`);
+    console.log(`[FORGE] Args файл существует: ${fs.existsSync(argsFilePath)}`);
 
     // Читаем win_args.txt чтобы найти какие client библиотеки нужны
     let clientLibPaths = [];
@@ -523,20 +530,29 @@ class ModLoaderInstaller {
     try {
       if (fs.existsSync(argsFilePath)) {
         const argsContent = await fs.readFile(argsFilePath, 'utf8');
+        console.log(`[FORGE] Args файл прочитан, длина: ${argsContent.length} символов`);
 
         // Ищем пути вида libraries/net/minecraft/client/...
         const matches = argsContent.match(/libraries\/net\/minecraft\/(?:client|server)\/[^;:\s]+\.jar/g);
         if (matches) {
           clientLibPaths = matches.map(p => p.replace(/\/server\//g, '/client/').replace(/server-/g, 'client-'));
           console.log(`[FORGE] Найдено ${clientLibPaths.length} клиентских библиотек в args файле`);
+          console.log(`[FORGE] Библиотеки: ${clientLibPaths.join(', ')}`);
+        } else {
+          console.log(`[FORGE] В args файле не найдено паттернов библиотек`);
         }
+      } else {
+        console.log(`[FORGE] Args файл не найден, будем использовать стандартные пути`);
       }
     } catch (err) {
-      console.warn(`[FORGE] Не удалось прочитать args файл: ${err.message}`);
+      console.warn(`[FORGE] Ошибка чтения args файла: ${err.message}`);
+      console.warn(`[FORGE] Stack trace:`, err.stack);
     }
 
     // Если не нашли в args файле, используем стандартные пути для версии
     if (clientLibPaths.length === 0) {
+      console.log('[FORGE] Переходим к стандартным путям для версии...');
+
       // Стандартный формат для Forge 1.17+
       // MCP версия обычно в формате YYYYMMDD.HHMMSS
       const mcpVersions = {
@@ -555,6 +571,8 @@ class ModLoaderInstaller {
       };
 
       const mcpVersion = mcpVersions[minecraftVersion];
+      console.log(`[FORGE] MCP версия для ${minecraftVersion}: ${mcpVersion || 'НЕ НАЙДЕНА'}`);
+
       if (mcpVersion) {
         const versionString = `${minecraftVersion}-${mcpVersion}`;
         clientLibPaths = [
@@ -562,14 +580,30 @@ class ModLoaderInstaller {
           `libraries/net/minecraft/client/${versionString}/client-${versionString}-extra.jar`
         ];
         console.log(`[FORGE] Используем стандартный MCP версии: ${mcpVersion}`);
+        console.log(`[FORGE] Пути для загрузки:`);
+        clientLibPaths.forEach(p => console.log(`[FORGE]   - ${p}`));
+      } else {
+        console.log(`[FORGE] ⚠️  ВНИМАНИЕ: Версия ${minecraftVersion} не поддерживается, client JAR не будут загружены`);
+        console.log(`[FORGE] Пропускаем создание client библиотек`);
+        return; // Выходим, если версия не поддерживается
       }
     }
 
     // Скачиваем каждую клиентскую библиотеку
-    for (const libPath of clientLibPaths) {
+    console.log(`[FORGE] Обработка ${clientLibPaths.length} клиентских библиотек...`);
+
+    for (let i = 0; i < clientLibPaths.length; i++) {
+      const libPath = clientLibPaths[i];
+      console.log(`[FORGE] ----------------------------------------`);
+      console.log(`[FORGE] Обработка библиотеки ${i + 1}/${clientLibPaths.length}`);
+      console.log(`[FORGE] Путь: ${libPath}`);
+
       const relativePath = libPath.replace(/^libraries\//, '');
       const fullPath = path.join(this.librariesDir, relativePath.split('/').join(path.sep));
       const dirPath = path.dirname(fullPath);
+
+      console.log(`[FORGE] Полный путь: ${fullPath}`);
+      console.log(`[FORGE] Директория: ${dirPath}`);
 
       // Проверяем существует ли уже И имеет ли правильный размер
       if (fs.existsSync(fullPath)) {
@@ -584,33 +618,44 @@ class ModLoaderInstaller {
           console.log(`[FORGE] ✓ ${path.basename(fullPath)} уже существует (${sizeInMB.toFixed(2)} MB)`);
           continue;
         }
+      } else {
+        console.log(`[FORGE] Файл не существует, нужно скачать`);
       }
 
       await fs.ensureDir(dirPath);
+      console.log(`[FORGE] Директория создана/проверена`);
 
       // Определяем тип файла и URL для скачивания
       const fileName = path.basename(fullPath);
+      console.log(`[FORGE] Имя файла: ${fileName}`);
 
       // КРИТИЧНО: Скачиваем настоящие JAR из Maven Forge вместо создания пустых
       if (fileName.includes('client-')) {
+        console.log(`[FORGE] Это client JAR файл, начинаем скачивание...`);
+
         // Извлекаем версию из имени файла (например, 1.18.2-20220404.173914)
         const versionMatch = fileName.match(/client-([\d.-]+)(?:-extra)?\.jar/);
         if (versionMatch) {
           const clientVersion = versionMatch[1];
           const isExtra = fileName.includes('-extra.jar');
 
+          console.log(`[FORGE] Версия client: ${clientVersion}`);
+          console.log(`[FORGE] Это extra файл: ${isExtra}`);
+
           // URL на Maven Forge
           const jarName = isExtra ? `client-${clientVersion}-extra.jar` : `client-${clientVersion}.jar`;
           const mavenUrl = `https://maven.minecraftforge.net/net/minecraft/client/${clientVersion}/${jarName}`;
 
-          console.log(`[FORGE] Скачивание ${fileName} из Maven Forge...`);
-          console.log(`[FORGE] URL: ${mavenUrl}`);
+          console.log(`[FORGE] 🌐 Начинаю скачивание ${fileName}...`);
+          console.log(`[FORGE] 📍 URL: ${mavenUrl}`);
 
           // Скачиваем с retry логикой
           let retries = 5;
           let success = false;
 
           for (let attempt = 0; attempt < retries; attempt++) {
+            console.log(`[FORGE] 🔄 Попытка ${attempt + 1}/${retries}...`);
+
             try {
               const response = await axios({
                 url: mavenUrl,
@@ -620,44 +665,69 @@ class ModLoaderInstaller {
                 ...this.axiosConfig
               });
 
+              console.log(`[FORGE] ✓ Ответ получен, статус: ${response.status}`);
+              console.log(`[FORGE] ✓ Content-Type: ${response.headers['content-type']}`);
+              console.log(`[FORGE] ✓ Content-Length: ${response.headers['content-length']} bytes`);
+
               const writer = fs.createWriteStream(fullPath);
               await new Promise((resolve, reject) => {
                 writer.on('finish', resolve);
-                writer.on('error', reject);
+                writer.on('error', (err) => {
+                  console.error(`[FORGE] ❌ Ошибка записи файла: ${err.message}`);
+                  reject(err);
+                });
+                response.data.on('error', (err) => {
+                  console.error(`[FORGE] ❌ Ошибка потока данных: ${err.message}`);
+                  reject(err);
+                });
                 response.data.pipe(writer);
               });
+
+              console.log(`[FORGE] ✓ Файл записан на диск`);
 
               // Проверяем размер файла после загрузки
               const stats = fs.statSync(fullPath);
               const sizeInMB = stats.size / (1024 * 1024);
 
+              console.log(`[FORGE] 📊 Размер скачанного файла: ${sizeInMB.toFixed(2)} MB`);
+
               if (sizeInMB < 1 && !isExtra) {
                 throw new Error(`Загруженный файл слишком мал: ${sizeInMB.toFixed(2)} MB (ожидалось ~15-20 MB)`);
               }
 
-              console.log(`[FORGE] ✓ ${fileName} скачан (${sizeInMB.toFixed(2)} MB)`);
+              console.log(`[FORGE] ✅ ${fileName} успешно скачан (${sizeInMB.toFixed(2)} MB)`);
               success = true;
               break;
 
             } catch (err) {
-              console.warn(`[FORGE] Попытка ${attempt + 1}/${retries} не удалась: ${err.message}`);
+              console.error(`[FORGE] ❌ Попытка ${attempt + 1}/${retries} не удалась`);
+              console.error(`[FORGE] ❌ Ошибка: ${err.message}`);
+              if (err.response) {
+                console.error(`[FORGE] ❌ HTTP статус: ${err.response.status}`);
+                console.error(`[FORGE] ❌ HTTP статус текст: ${err.response.statusText}`);
+              }
 
               // Удаляем поврежденный файл если он был создан
               if (fs.existsSync(fullPath)) {
+                console.log(`[FORGE] 🗑️  Удаляем поврежденный файл...`);
                 fs.unlinkSync(fullPath);
               }
 
               if (attempt < retries - 1) {
                 const delay = 3000 * (attempt + 1); // 3s, 6s, 9s, 12s, 15s
-                console.warn(`[FORGE] Повторная попытка через ${delay/1000}s...`);
+                console.warn(`[FORGE] ⏳ Повторная попытка через ${delay/1000}s...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
               }
             }
           }
 
           if (!success) {
-            throw new Error(`Не удалось скачать ${fileName} после ${retries} попыток из ${mavenUrl}`);
+            const errorMsg = `Не удалось скачать ${fileName} после ${retries} попыток из ${mavenUrl}`;
+            console.error(`[FORGE] ❌❌❌ КРИТИЧЕСКАЯ ОШИБКА: ${errorMsg}`);
+            throw new Error(errorMsg);
           }
+        } else {
+          console.warn(`[FORGE] ⚠️  Не удалось распарсить версию из имени файла: ${fileName}`);
         }
       } else if (fileName.includes('-srg.jar')) {
         // srg.jar - это клиент с SRG названиями
@@ -673,7 +743,9 @@ class ModLoaderInstaller {
       }
     }
 
-    console.log('[FORGE] ✓ Клиентские библиотеки обработаны');
+    console.log('[FORGE] ========================================');
+    console.log('[FORGE] ✅ ЗАВЕРШЕНО: Все клиентские библиотеки обработаны');
+    console.log('[FORGE] ========================================');
   }
 
   /**

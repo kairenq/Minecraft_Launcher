@@ -286,9 +286,15 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
       throw new Error('Modpack not found');
     }
 
+    console.log(`\n=== НАЧАЛО УСТАНОВКИ СБОРКИ ===`);
+    console.log(`Сборка: ${modpack.name} (${modpackId})`);
+    console.log(`Minecraft: ${modpack.minecraftVersion}`);
+    console.log(`Модлоадер: ${modpack.modLoader || 'vanilla'}`);
+
     // 1. Проверка и загрузка Java
     const javaInstalled = await javaDownloader.checkJava();
     if (!javaInstalled) {
+      console.log('[INSTALL] Java не установлена, начинаем загрузку...');
       mainWindow.webContents.send('install-status', {
         modpackId: modpackId,
         status: 'downloading-java'
@@ -310,6 +316,9 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
           }
         );
       });
+      console.log('[INSTALL] ✓ Java установлена');
+    } else {
+      console.log('[INSTALL] ✓ Java уже установлена');
     }
 
     // 2. Загрузка Minecraft
@@ -320,6 +329,7 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
 
     const minecraftInstalled = await minecraftDownloader.checkMinecraft(modpack.minecraftVersion);
     if (!minecraftInstalled) {
+      console.log(`[INSTALL] Minecraft ${modpack.minecraftVersion} не установлен, начинаем загрузку...`);
       await new Promise((resolve, reject) => {
         minecraftDownloader.download(
           modpack.minecraftVersion,
@@ -338,43 +348,68 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
           }
         );
       });
+      console.log(`[INSTALL] ✓ Minecraft ${modpack.minecraftVersion} установлен`);
+    } else {
+      console.log(`[INSTALL] ✓ Minecraft ${modpack.minecraftVersion} уже установлен`);
     }
 
-    // 3. Установка модлоадера (Forge/Fabric)
+    // 3. Установка модлоадера (Forge/Fabric) - С ПРОВЕРКОЙ
     if (modpack.modLoader && modpack.modLoader !== 'vanilla') {
-      mainWindow.webContents.send('install-status', {
-        modpackId: modpackId,
-        status: 'installing-modloader'
-      });
-
-      await modLoaderInstaller.install(
+      console.log(`[INSTALL] Проверка модлоадера: ${modpack.modLoader}`);
+      
+      // ПРОВЕРЯЕМ УСТАНОВЛЕН ЛИ УЖЕ МОДЛОАДЕР
+      const isModLoaderInstalled = await modLoaderInstaller.checkInstalled(
         modpack.modLoader,
         modpack.minecraftVersion,
-        modpack.modLoaderVersion,
-        (progress) => {
-          mainWindow.webContents.send('download-progress', {
-            modpackId: modpackId,
-            type: 'modloader',
-            modLoader: modpack.modLoader,
-            stage: progress.stage || 'Установка модлоадера',
-            percent: progress.percent || 0
-          });
-        }
+        modpack.modLoaderVersion
       );
+
+      if (!isModLoaderInstalled) {
+        console.log(`[INSTALL] Модлоадер ${modpack.modLoader} не установлен, начинаем установку...`);
+        mainWindow.webContents.send('install-status', {
+          modpackId: modpackId,
+          status: 'installing-modloader'
+        });
+
+        await modLoaderInstaller.install(
+          modpack.modLoader,
+          modpack.minecraftVersion,
+          modpack.modLoaderVersion,
+          (progress) => {
+            mainWindow.webContents.send('download-progress', {
+              modpackId: modpackId,
+              type: 'modloader',
+              modLoader: modpack.modLoader,
+              stage: progress.stage || 'Установка модлоадера',
+              percent: progress.percent || 0
+            });
+          }
+        );
+        console.log(`[INSTALL] ✓ Модлоадер ${modpack.modLoader} установлен`);
+      } else {
+        console.log(`[INSTALL] ✓ Модлоадер ${modpack.modLoader} уже установлен, пропускаем`);
+        mainWindow.webContents.send('download-progress', {
+          modpackId: modpackId,
+          type: 'modloader',
+          modLoader: modpack.modLoader,
+          stage: 'Модлоадер уже установлен',
+          percent: 100
+        });
+      }
     }
 
     // 4. Установка модов/контента
     const instanceDir = path.join(getLauncherDir(), 'instances', modpackId);
     await fs.ensureDir(instanceDir);
+    console.log(`[INSTALL] Директория сборки: ${instanceDir}`);
 
     // Способ 1: Из архива (приоритет)
     if (modpack.archiveUrl) {
+      console.log(`[INSTALL] Установка из архива: ${modpack.archiveUrl}`);
       mainWindow.webContents.send('install-status', {
         modpackId: modpackId,
         status: 'installing-archive'
       });
-
-      console.log(`[INSTALL] Установка сборки из архива: ${modpack.archiveUrl}`);
 
       await archiveDownloader.downloadAndExtract(
         modpack.archiveUrl,
@@ -393,12 +428,11 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
 
     // Способ 2: Отдельные моды
     } else if (modpack.mods && modpack.mods.length > 0) {
+      console.log(`[INSTALL] Установка ${modpack.mods.length} модов`);
       mainWindow.webContents.send('install-status', {
         modpackId: modpackId,
         status: 'installing-mods'
       });
-
-      console.log(`[INSTALL] Установка отдельных модов: ${modpack.mods.length} шт.`);
 
       await modsDownloader.downloadMods(
         modpack.mods,
@@ -427,9 +461,11 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
       status: 'completed'
     });
 
+    console.log(`[INSTALL] ✓ Сборка "${modpack.name}" успешно установлена!`);
     return { success: true };
+
   } catch (error) {
-    console.error('Ошибка установки:', error);
+    console.error('[INSTALL] Ошибка установки:', error);
 
     // Отправляем статус ошибки
     mainWindow.webContents.send('install-status', {
@@ -449,6 +485,8 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
       userMessage = 'Файлы версии не найдены на сервере Mojang. Возможно, версия больше не поддерживается.';
     } else if (error.message.includes('ENOSPC')) {
       userMessage = 'Недостаточно места на диске для установки.';
+    } else if (error.message.includes('ENOENT') && error.message.includes('forge-installer.jar')) {
+      userMessage = 'Ошибка установки Forge. Файл установщика не найден. Попробуйте переустановить сборку.';
     }
 
     throw new Error(`${userMessage}\n\nТехнические детали: ${error.message}`);

@@ -705,6 +705,14 @@ class ModLoaderInstaller {
               if (err.response) {
                 console.error(`[FORGE] ❌ HTTP статус: ${err.response.status}`);
                 console.error(`[FORGE] ❌ HTTP статус текст: ${err.response.statusText}`);
+
+                // Если это -extra.jar и получили 404, это не критично
+                if (isExtra && err.response.status === 404) {
+                  console.log(`[FORGE] ⚠️  Файл ${fileName} не найден на сервере (это нормально для -extra.jar)`);
+                  console.log(`[FORGE] ✓ Пропускаем опциональный -extra.jar файл`);
+                  success = true;
+                  break; // Выходим из цикла retry
+                }
               }
 
               // Удаляем поврежденный файл если он был создан
@@ -722,9 +730,14 @@ class ModLoaderInstaller {
           }
 
           if (!success) {
-            const errorMsg = `Не удалось скачать ${fileName} после ${retries} попыток из ${mavenUrl}`;
-            console.error(`[FORGE] ❌❌❌ КРИТИЧЕСКАЯ ОШИБКА: ${errorMsg}`);
-            throw new Error(errorMsg);
+            // Если это -extra.jar, это не критично
+            if (isExtra) {
+              console.warn(`[FORGE] ⚠️  Не удалось скачать опциональный файл ${fileName}, продолжаем без него`);
+            } else {
+              const errorMsg = `Не удалось скачать ${fileName} после ${retries} попыток из ${mavenUrl}`;
+              console.error(`[FORGE] ❌❌❌ КРИТИЧЕСКАЯ ОШИБКА: ${errorMsg}`);
+              throw new Error(errorMsg);
+            }
           }
         } else {
           console.warn(`[FORGE] ⚠️  Не удалось распарсить версию из имени файла: ${fileName}`);

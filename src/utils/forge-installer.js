@@ -35,7 +35,7 @@ class ForgeInstaller {
       await this.createMissingFiles(mcVersion, forgeVersion, forgeDir);
       
       // Загружаем библиотеки
-      await this.downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
+      await this.downloadForge(mcVersion, forgeVersion, forgeDir, onProgress);
       
       console.log(`[FORGE] ✓ Установка завершена: ${forgeId}`);
       return forgeId;
@@ -351,25 +351,25 @@ class ForgeInstaller {
           "-cp", "${classpath}"
         ]
       },
-      libraries: [
-        {
-          name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
-          downloads: {
-            artifact: {
-              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
-              path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
-            }
-          }
-        },
-        {
-          name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
-          downloads: {
-            artifact: {
-              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
-              path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
-            }
-          }
-        },
+libraries: [
+  {
+    name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
+    downloads: {
+      artifact: {
+        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
+        path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
+      }
+    }
+  },
+  {
+    name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
+    downloads: {
+      artifact: {
+        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
+        path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
+      }
+    }
+  },
         {
           name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`,
           downloads: {

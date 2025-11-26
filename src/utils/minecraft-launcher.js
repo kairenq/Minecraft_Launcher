@@ -57,6 +57,16 @@ class MinecraftLauncher {
         throw new Error(error);
       }
 
+      // Проверка существования базового Minecraft
+      const baseVersionDir = path.join(this.versionsDir, version);
+      const baseVersionJar = path.join(baseVersionDir, `${version}.jar`);
+      if (!fs.existsSync(baseVersionJar)) {
+        const error = `Базовый Minecraft ${version} не установлен. Файл не найден: ${baseVersionJar}`;
+        console.error(error);
+        throw new Error(error);
+      }
+      console.log(`✓ Базовый Minecraft найден: ${baseVersionJar}`);
+
       // Определение ID версии в зависимости от модлоадера
       let versionId = version;
       let isForge = false;
@@ -145,15 +155,7 @@ class MinecraftLauncher {
 
       // Построение classpath и modulepath
       console.log('\n=== ПОСТРОЕНИЕ CLASSPATH И MODULEPATH ===');
-      const { classpath, modulepath } = await this.buildPaths(versionData, process.platform);
-      
-      // Добавляем JAR клиента для ванильного Minecraft
-      if (modLoader === 'vanilla' || !modLoader) {
-        const versionJar = path.join(this.versionsDir, version, `${version}.jar`);
-        if (fs.existsSync(versionJar)) {
-          classpath.push(versionJar);
-        }
-      }
+      const { classpath, modulepath } = await this.buildPaths(versionData, process.platform, versionId);
 
       // Проверяем существование всех файлов в classpath и modulepath
       console.log('\n=== ПРОВЕРКА ФАЙЛОВ ===');
@@ -161,6 +163,8 @@ class MinecraftLauncher {
       const missingModulepath = await this.validateFiles(modulepath, logStream, 'MODULEPATH');
 
       if (missingClasspath.length > 0 || missingModulepath.length > 0) {
+        console.error('Отсутствующие файлы в classpath:', missingClasspath);
+        console.error('Отсутствующие файлы в modulepath:', missingModulepath);
         throw new Error(`Отсутствуют файлы библиотек. Попробуйте переустановить версию.`);
       }
 
@@ -236,58 +240,92 @@ class MinecraftLauncher {
   /**
    * Построение classpath и modulepath из библиотек версии
    */
-  async buildPaths(versionData, osName) {
+  async buildPaths(versionData, osName, versionId) {
     const classpath = [];
     const modulepath = [];
 
-    for (const lib of versionData.libraries) {
-      let allowed = true;
-
-      if (lib.rules) {
-        allowed = false;
-        for (const rule of lib.rules) {
-          if (rule.action === 'allow') {
-            if (!rule.os || this.checkOsRule(rule.os, osName)) {
-              allowed = true;
-            }
-          } else if (rule.action === 'disallow') {
-            if (!rule.os || this.checkOsRule(rule.os, osName)) {
-              allowed = false;
-            }
-          }
+    // КРИТИЧЕСКИ ВАЖНО: Добавляем клиентский JAR для наследуемых версий (Forge/Fabric)
+    if (versionData.inheritsFrom) {
+        const baseVersion = versionData.inheritsFrom;
+        const baseVersionJar = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+        const forgeVersionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
+        
+        console.log(`[CLASSPATH] Проверка базового JAR: ${baseVersionJar}`);
+        console.log(`[CLASSPATH] Проверка Forge JAR: ${forgeVersionJar}`);
+        
+        if (fs.existsSync(baseVersionJar)) {
+            classpath.push(baseVersionJar);
+            console.log(`✓ Добавлен базовый клиент: ${baseVersion}.jar`);
+        } else {
+            console.warn(`⚠️ Базовый клиент не найден: ${baseVersionJar}`);
         }
-      }
-
-      if (allowed) {
-        let libPath = null;
-
-        if (lib.downloads && lib.downloads.artifact) {
-          const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
-          libPath = path.join(this.librariesDir, normalizedPath);
-        } else if (lib.name) {
-          const parts = lib.name.split(':');
-          if (parts.length >= 3) {
-            const [group, artifact, version] = parts;
-            const groupPath = group.replace(/\./g, '/');
-            const fileName = `${artifact}-${version}.jar`;
-            libPath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
-          }
+        
+        if (fs.existsSync(forgeVersionJar)) {
+            classpath.push(forgeVersionJar);
+            console.log(`✓ Добавлен Forge клиент: ${versionId}.jar`);
         }
-
-        if (libPath && fs.existsSync(libPath)) {
-          const libName = path.basename(libPath);
-          if (!libName.includes('-natives-')) {
-            // Для современных версий Forge, добавляем системные библиотеки в modulepath
-            if (this.isModuleLibrary(libName)) {
-              modulepath.push(libPath);
-            } else {
-              classpath.push(libPath);
-            }
-          }
+    } else {
+        // Для ванильных версий добавляем только основной JAR
+        const versionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
+        if (fs.existsSync(versionJar)) {
+            classpath.push(versionJar);
+            console.log(`✓ Добавлен ванильный клиент: ${versionId}.jar`);
         }
-      }
     }
 
+    for (const lib of versionData.libraries) {
+        let allowed = true;
+
+        if (lib.rules) {
+            allowed = false;
+            for (const rule of lib.rules) {
+                if (rule.action === 'allow') {
+                    if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                        allowed = true;
+                    }
+                } else if (rule.action === 'disallow') {
+                    if (!rule.os || this.checkOsRule(rule.os, osName)) {
+                        allowed = false;
+                    }
+                }
+            }
+        }
+
+        if (allowed) {
+            let libPath = null;
+
+            if (lib.downloads && lib.downloads.artifact) {
+                const normalizedPath = lib.downloads.artifact.path.split('/').join(path.sep);
+                libPath = path.join(this.librariesDir, normalizedPath);
+            } else if (lib.name) {
+                const parts = lib.name.split(':');
+                if (parts.length >= 3) {
+                    const [group, artifact, version] = parts;
+                    const groupPath = group.replace(/\./g, '/');
+                    const fileName = `${artifact}-${version}.jar`;
+                    libPath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
+                }
+            }
+
+            if (libPath && fs.existsSync(libPath)) {
+                const libName = path.basename(libPath);
+                if (!libName.includes('-natives-')) {
+                    // Для современных версий Forge, добавляем системные библиотеки в modulepath
+                    if (this.isModuleLibrary(libName)) {
+                        modulepath.push(libPath);
+                    } else {
+                        classpath.push(libPath);
+                    }
+                }
+            } else if (libPath) {
+                console.warn(`⚠️ Библиотека не найдена: ${libPath}`);
+            }
+        }
+    }
+
+    console.log(`[CLASSPATH] Итоговый classpath: ${classpath.length} файлов`);
+    console.log(`[MODULEPATH] Итоговый modulepath: ${modulepath.length} файлов`);
+    
     return { classpath, modulepath };
   }
 
@@ -472,85 +510,85 @@ class MinecraftLauncher {
   }
 
   /**
- * Подготовка аргументов запуска
- */
-async prepareLaunchArguments(options, logStream) {
-  const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
+   * Подготовка аргументов запуска
+   */
+  async prepareLaunchArguments(options, logStream) {
+    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
 
-  const uuid = this.generateUUID(username);
+    const uuid = this.generateUUID(username);
 
-  let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
-  if (versionData.assetIndex && versionData.assetIndex.id) {
-    assetIndexName = versionData.assetIndex.id;
+    let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
+    if (versionData.assetIndex && versionData.assetIndex.id) {
+      assetIndexName = versionData.assetIndex.id;
+    }
+
+    const variables = {
+      auth_player_name: username,
+      version_name: versionId,
+      game_directory: gameDir,
+      assets_root: this.assetsDir,
+      assets_index_name: assetIndexName,
+      auth_uuid: uuid,
+      auth_access_token: uuid,
+      clientid: '0',
+      auth_xuid: '0',
+      user_type: 'legacy',
+      version_type: versionData.type || 'release',
+      natives_directory: nativesDir,
+      launcher_name: 'aureate-launcher',
+      launcher_version: '1.0.0',
+      classpath: classpath,
+      modulepath: modulepath,
+      library_directory: this.librariesDir,
+      classpath_separator: process.platform === 'win32' ? ';' : ':'
+    };
+
+    const jvmArgs = [];
+
+    // Базовые аргументы памяти
+    jvmArgs.push(`-Xmx${memory}M`);
+    jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
+
+    // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON
+    if (versionData.arguments && versionData.arguments.jvm) {
+      console.log('✓ Используем JVM аргументы из версии JSON');
+      this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
+    } else {
+      // Только для старых версий добавляем natives path
+      jvmArgs.push(`-Djava.library.path=${nativesDir}`);
+    }
+
+    // ДОПОЛНИТЕЛЬНЫЕ АРГУМЕНТЫ ДЛЯ FORGE 1.18+
+    if (isForge) {
+      console.log('✓ Добавляем специальные аргументы для Forge');
+      
+      // Критически важные аргументы для BootstrapLauncher
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util.jar=cpw.mods.securejarhandler');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang.invoke=cpw.mods.securejarhandler');
+      jvmArgs.push('--add-exports');
+      jvmArgs.push('java.base/sun.security.util=cpw.mods.securejarhandler');
+      jvmArgs.push('--add-exports');
+      jvmArgs.push('jdk.naming.dns/com.sun.jndi.dns=java.naming');
+      
+      // Для Java 17+ compatibility
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.io=ALL-UNNAMED');
+      jvmArgs.push('--add-opens');
+      jvmArgs.push('java.base/java.util=ALL-UNNAMED');
+    }
+
+    const gameArgs = this.prepareGameArgs(versionData, variables);
+
+    return {
+      jvmArgs,
+      gameArgs,
+      mainClass: versionData.mainClass
+    };
   }
-
-  const variables = {
-    auth_player_name: username,
-    version_name: versionId,
-    game_directory: gameDir,
-    assets_root: this.assetsDir,
-    assets_index_name: assetIndexName,
-    auth_uuid: uuid,
-    auth_access_token: uuid,
-    clientid: '0',
-    auth_xuid: '0',
-    user_type: 'legacy',
-    version_type: versionData.type || 'release',
-    natives_directory: nativesDir,
-    launcher_name: 'aureate-launcher',
-    launcher_version: '1.0.0',
-    classpath: classpath,
-    modulepath: modulepath,
-    library_directory: this.librariesDir,
-    classpath_separator: process.platform === 'win32' ? ';' : ':'
-  };
-
-  const jvmArgs = [];
-
-  // Базовые аргументы памяти
-  jvmArgs.push(`-Xmx${memory}M`);
-  jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
-
-  // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON
-  if (versionData.arguments && versionData.arguments.jvm) {
-    console.log('✓ Используем JVM аргументы из версии JSON');
-    this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
-  } else {
-    // Только для старых версий добавляем natives path
-    jvmArgs.push(`-Djava.library.path=${nativesDir}`);
-  }
-
-  // ДОПОЛНИТЕЛЬНЫЕ АРГУМЕНТЫ ДЛЯ FORGE 1.18+
-  if (isForge) {
-    console.log('✓ Добавляем специальные аргументы для Forge');
-    
-    // Критически важные аргументы для BootstrapLauncher
-    jvmArgs.push('--add-opens');
-    jvmArgs.push('java.base/java.util.jar=cpw.mods.securejarhandler');
-    jvmArgs.push('--add-opens');
-    jvmArgs.push('java.base/java.lang.invoke=cpw.mods.securejarhandler');
-    jvmArgs.push('--add-exports');
-    jvmArgs.push('java.base/sun.security.util=cpw.mods.securejarhandler');
-    jvmArgs.push('--add-exports');
-    jvmArgs.push('jdk.naming.dns/com.sun.jndi.dns=java.naming');
-    
-    // Для Java 17+ compatibility
-    jvmArgs.push('--add-opens');
-    jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
-    jvmArgs.push('--add-opens');
-    jvmArgs.push('java.base/java.io=ALL-UNNAMED');
-    jvmArgs.push('--add-opens');
-    jvmArgs.push('java.base/java.util=ALL-UNNAMED');
-  }
-
-  const gameArgs = this.prepareGameArgs(versionData, variables);
-
-  return {
-    jvmArgs,
-    gameArgs,
-    mainClass: versionData.mainClass
-  };
-}
 
   /**
    * Обработка JVM аргументов из версии

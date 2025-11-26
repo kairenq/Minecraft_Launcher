@@ -181,100 +181,160 @@ class ForgeInstaller {
     console.log(`[FORGE] ✓ Загружено ${downloaded}/${libraries.length} библиотек`);
   }
 
-  /**
-   * Создание JSON конфига для Forge
-   */
-  async createForgeJson(mcVersion, forgeVersion, forgeDir) {
-    const forgeId = `${mcVersion}-forge-${forgeVersion}`;
-    const jsonPath = path.join(forgeDir, `${forgeId}.json`);
+ /**
+ * Создание JSON конфига для Forge
+ */
+async createForgeJson(mcVersion, forgeVersion, forgeDir) {
+  const forgeId = `${mcVersion}-forge-${forgeVersion}`;
+  const jsonPath = path.join(forgeDir, `${forgeId}.json`);
 
-    // Пробуем скачать официальный конфиг
-    try {
-      const officialUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}.json`;
-      console.log(`[FORGE] Попытка загрузить официальный конфиг: ${officialUrl}`);
-      
-      const response = await axios.get(officialUrl, { timeout: 10000 });
-      await fs.writeJson(jsonPath, response.data, { spaces: 2 });
-      console.log('[FORGE] ✓ Официальный конфиг загружен');
-      return;
-    } catch (error) {
-      console.warn('[FORGE] Не удалось загрузить официальный конфиг:', error.message);
-    }
-
-    // Создаем базовый конфиг
-    console.log('[FORGE] Создаем базовый конфиг...');
-    const baseConfig = {
-      id: forgeId,
-      time: new Date().toISOString(),
-      releaseTime: new Date().toISOString(),
-      type: "release",
-      mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
-      inheritsFrom: mcVersion, // КРИТИЧЕСКИ ВАЖНО!
-      arguments: {
-        game: [
-          "--gameDir", "${game_directory}",
-          "--width", "${resolution_width}", 
-          "--height", "${resolution_height}"
-        ],
-        jvm: [
-          "-Djava.library.path=${natives_directory}",
-          "-Dminecraft.launcher.brand=${launcher_name}",
-          "-Dminecraft.launcher.version=${launcher_version}",
-          "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,${version_name}.jar",
-          "-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
-          "-DlibraryDirectory=${library_directory}",
-          "-p", "${modulepath}",
-          "--add-modules", "ALL-MODULE-PATH",
-          "--add-opens", "java.base/java.util.jar=cpw.mods.securejarhandler",
-          "--add-opens", "java.base/java.lang.invoke=cpw.mods.securejarhandler",
-          "--add-exports", "java.base/sun.security.util=cpw.mods.securejarhandler",
-          "--add-exports", "jdk.naming.dns/com.sun.jndi.dns=java.naming",
-          "-cp", "${classpath}"
-        ]
-      },
-      libraries: [
-        {
-          name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`
-        },
-        {
-          name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`
-        },
-        {
-          name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`
-        },
-        {
-          name: `net.minecraftforge:lowcodelanguage:${mcVersion}-${forgeVersion}`
-        },
-        {
-          name: `net.minecraftforge:mclanguage:${mcVersion}-${forgeVersion}`
-        },
-        {
-          name: `cpw.mods:bootstraplauncher:1.1.2`
-        },
-        {
-          name: `cpw.mods:securejarhandler:1.0.8`
-        },
-        {
-          name: `org.ow2.asm:asm:9.3`
-        },
-        {
-          name: `org.ow2.asm:asm-commons:9.3`
-        },
-        {
-          name: `org.ow2.asm:asm-tree:9.3`
-        },
-        {
-          name: `org.ow2.asm:asm-util:9.3`
-        },
-        {
-          name: `org.ow2.asm:asm-analysis:9.3`
-        }
-      ]
-    };
-
-    await fs.writeJson(jsonPath, baseConfig, { spaces: 2 });
-    console.log('[FORGE] ✓ Базовый конфиг создан');
+  // Пробуем скачать официальный конфиг
+  try {
+    const officialUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}.json`;
+    console.log(`[FORGE] Попытка загрузить официальный конфиг: ${officialUrl}`);
+    
+    const response = await axios.get(officialUrl, { timeout: 10000 });
+    await fs.writeJson(jsonPath, response.data, { spaces: 2 });
+    console.log('[FORGE] ✓ Официальный конфиг загружен');
+    return;
+  } catch (error) {
+    console.warn('[FORGE] Не удалось загрузить официальный конфиг:', error.message);
   }
+
+  // Создаем базовый конфиг для Forge 1.18.2
+  console.log('[FORGE] Создаем базовый конфиг для Forge 1.18.2...');
+  const baseConfig = {
+    id: forgeId,
+    time: new Date().toISOString(),
+    releaseTime: new Date().toISOString(),
+    type: "release",
+    mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
+    inheritsFrom: mcVersion,
+    arguments: {
+      game: [
+        "--gameDir", "${game_directory}",
+        "--width", "854", 
+        "--height", "480"
+      ],
+      jvm: [
+        "-Djava.library.path=${natives_directory}",
+        "-Dminecraft.launcher.brand=${launcher_name}",
+        "-Dminecraft.launcher.version=${launcher_version}",
+        "-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,${version_name}.jar",
+        "-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
+        "-DlibraryDirectory=${library_directory}",
+        "-p", "${modulepath}",
+        "--add-modules", "ALL-MODULE-PATH",
+        "--add-opens", "java.base/java.util.jar=cpw.mods.securejarhandler",
+        "--add-opens", "java.base/java.lang.invoke=cpw.mods.securejarhandler",
+        "--add-exports", "java.base/sun.security.util=cpw.mods.securejarhandler",
+        "--add-exports", "jdk.naming.dns/com.sun.jndi.dns=java.naming",
+        "-cp", "${classpath}"
+      ]
+    },
+    libraries: [
+      {
+        name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
+          }
+        }
+      },
+      {
+        name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
+          }
+        }
+      },
+      {
+        name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`
+          }
+        }
+      },
+      {
+        name: `net.minecraftforge:lowcodelanguage:${mcVersion}-${forgeVersion}`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`
+          }
+        }
+      },
+      {
+        name: `net.minecraftforge:mclanguage:${mcVersion}-${forgeVersion}`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`
+          }
+        }
+      },
+      {
+        name: `cpw.mods:bootstraplauncher:1.1.2`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar`
+          }
+        }
+      },
+      {
+        name: `cpw.mods:securejarhandler:1.0.8`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar`
+          }
+        }
+      },
+      {
+        name: `org.ow2.asm:asm:9.3`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/org/ow2/asm/asm/9.3/asm-9.3.jar`
+          }
+        }
+      },
+      {
+        name: `org.ow2.asm:asm-commons:9.3`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`
+          }
+        }
+      },
+      {
+        name: `org.ow2.asm:asm-tree:9.3`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`
+          }
+        }
+      },
+      {
+        name: `org.ow2.asm:asm-util:9.3`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`
+          }
+        }
+      },
+      {
+        name: `org.ow2.asm:asm-analysis:9.3`,
+        downloads: {
+          artifact: {
+            url: `https://maven.minecraftforge.net/org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`
+          }
+        }
+      }
+    ]
+  };
+
+  await fs.writeJson(jsonPath, baseConfig, { spaces: 2 });
+  console.log('[FORGE] ✓ Базовый конфиг создан');
+}
 
   /**
    * Загрузка одной библиотеки

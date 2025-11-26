@@ -26,6 +26,9 @@ class ForgeInstaller {
     // Создаем папки
     await fs.ensureDir(forgeDir);
     await this.createDirectories();
+    
+    // ПРИНУДИТЕЛЬНО СОЗДАЕМ СТРУКТУРУ ПАПОК FORGE
+    await this.createForgeFolderStructure(mcVersion, forgeVersion);
 
     try {
       // Скачиваем и запускаем установщик
@@ -34,7 +37,8 @@ class ForgeInstaller {
       // Создаем недостающие файлы если установщик не создал их
       await this.createMissingFiles(mcVersion, forgeVersion, forgeDir);
       
-      // Загружаем библиотеки - ИСПРАВЛЕННЫЙ ВЫЗОВ
+      // Загружаем библиотеки - УБЕДИТЕСЬ ЧТО ВЫЗЫВАЕТСЯ
+      console.log('[FORGE] Starting library download...');
       await this.downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
       
       console.log(`[FORGE] ✓ Установка завершена: ${forgeId}`);
@@ -43,6 +47,34 @@ class ForgeInstaller {
     } catch (error) {
       console.error('[FORGE] Ошибка установки:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Принудительное создание структуры папок Forge
+   */
+  async createForgeFolderStructure(mcVersion, forgeVersion) {
+    console.log('[FOLDER STRUCTURE] Creating Forge folders...');
+    
+    const requiredFolders = [
+      `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}`,
+      `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}`, 
+      `net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}`,
+      `net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}`,
+      `net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}`,
+      'cpw/mods/bootstraplauncher/1.1.2',
+      'cpw/mods/securejarhandler/1.0.8',
+      'org/ow2/asm/asm/9.3',
+      'org/ow2/asm/asm-commons/9.3',
+      'org/ow2/asm/asm-tree/9.3',
+      'org/ow2/asm/asm-util/9.3',
+      'org/ow2/asm/asm-analysis/9.3'
+    ];
+    
+    for (const folder of requiredFolders) {
+      const fullPath = path.join(this.librariesDir, folder);
+      await fs.ensureDir(fullPath);
+      console.log(`[FOLDER STRUCTURE] ✓ Created: ${folder}`);
     }
   }
 
@@ -178,18 +210,25 @@ class ForgeInstaller {
    */
   async downloadLibraryFile(url, filePath) {
     return new Promise((resolve, reject) => {
+      console.log(`[DOWNLOAD] ${url} -> ${filePath}`);
+      
       https.get(url, (response) => {
         if (response.statusCode === 200) {
           const file = fs.createWriteStream(filePath);
           response.pipe(file);
           file.on('finish', () => {
             file.close();
+            console.log(`[DOWNLOAD] ✓ Success: ${path.basename(filePath)}`);
             resolve();
           });
         } else {
+          console.error(`[DOWNLOAD] ❌ HTTP ${response.statusCode}: ${url}`);
           reject(new Error(`HTTP ${response.statusCode}`));
         }
-      }).on('error', reject);
+      }).on('error', (error) => {
+        console.error(`[DOWNLOAD] ❌ Network error: ${error.message}`);
+        reject(error);
+      });
     });
   }
 
@@ -262,9 +301,11 @@ class ForgeInstaller {
   }
 
   /**
-   * Загрузка библиотек Forge - ИСПРАВЛЕННЫЙ МЕТОД
+   * Загрузка библиотек Forge - ГЛАВНЫЙ ИСПРАВЛЕННЫЙ МЕТОД
    */
   async downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress) {
+    console.log('[FORGE] ⚡ downloadForgeLibraries CALLED!');
+    
     const forgeId = `${mcVersion}-forge-${forgeVersion}`;
     const versionJsonPath = path.join(forgeDir, `${forgeId}.json`);
 
@@ -276,10 +317,6 @@ class ForgeInstaller {
 
     // Загружаем библиотеки из конфига
     const versionData = await fs.readJson(versionJsonPath);
-    
-    // Исправляем опечатки в библиотеках
-    await this.fixMisspelledLibraries(versionData);
-
     const libraries = versionData.libraries || [];
 
     console.log(`[FORGE] Загрузка ${libraries.length} библиотек...`);
@@ -305,28 +342,60 @@ class ForgeInstaller {
   }
 
   /**
-   * Исправление опечаток в библиотеках
+   * Загрузка одной библиотеки
    */
-  async fixMisspelledLibraries(versionData) {
-    if (!versionData.libraries) return;
+  async downloadLibrary(lib) {
+    console.log('[DEBUG] Processing library:', lib.name);
     
-    let fixed = 0;
-    for (const lib of versionData.libraries) {
-      if (lib.name && lib.name.includes('fmkore')) {
-        const correctName = lib.name.replace('fmkore', 'fmlcore');
-        console.log(`[FIX] Correcting library: ${lib.name} -> ${correctName}`);
-        lib.name = correctName;
-        
-        if (lib.downloads && lib.downloads.artifact) {
-          lib.downloads.artifact.path = lib.downloads.artifact.path.replace('fmkore', 'fmlcore');
-          lib.downloads.artifact.url = lib.downloads.artifact.url.replace('fmkore', 'fmlcore');
+    if (lib.downloads && lib.downloads.artifact) {
+      const artifact = lib.downloads.artifact;
+      const filePath = path.join(this.librariesDir, artifact.path);
+      
+      console.log('[DEBUG] Expected path:', filePath);
+      console.log('[DEBUG] URL:', artifact.url);
+      
+      if (!fs.existsSync(filePath)) {
+        console.log(`[FORGE] Скачиваем: ${artifact.path}`);
+        await fs.ensureDir(path.dirname(filePath));
+        try {
+          await this.downloadFile(artifact.url, filePath);
+          console.log(`[FORGE] ✓ Успешно: ${path.basename(filePath)}`);
+        } catch (error) {
+          console.error(`[FORGE] ❌ Ошибка: ${artifact.url} -> ${error.message}`);
+          throw error;
         }
-        fixed++;
+      } else {
+        console.log(`[FORGE] ✓ Уже существует: ${artifact.path}`);
       }
-    }
-    
-    if (fixed > 0) {
-      console.log(`[FIX] Corrected ${fixed} misspelled libraries`);
+    } else if (lib.name) {
+      // Старый формат
+      const parts = lib.name.split(':');
+      if (parts.length >= 3) {
+        const [group, artifact, version] = parts;
+        const groupPath = group.replace(/\./g, '/');
+        const fileName = `${artifact}-${version}.jar`;
+        const filePath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
+        
+        if (!fs.existsSync(filePath)) {
+          await fs.ensureDir(path.dirname(filePath));
+          
+          const sources = [
+            `https://maven.minecraftforge.net/${groupPath}/${artifact}/${version}/${fileName}`,
+            `https://libraries.minecraft.net/${groupPath}/${artifact}/${version}/${fileName}`,
+            `https://repo1.maven.org/maven2/${groupPath}/${artifact}/${version}/${fileName}`
+          ];
+          
+          for (const source of sources) {
+            try {
+              await this.downloadFile(source, filePath);
+              console.log(`[FORGE] ✓ Скачано из: ${source}`);
+              break;
+            } catch (error) {
+              console.warn(`[FORGE] ❌ Не удалось скачать из ${source}: ${error.message}`);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -495,66 +564,6 @@ class ForgeInstaller {
 
     await fs.writeJson(jsonPath, baseConfig, { spaces: 2 });
     console.log('[FORGE] ✓ Базовый конфиг создан');
-  }
-
-  /**
-   * Загрузка одной библиотеки
-   */
-  async downloadLibrary(lib) {
-    console.log('[DEBUG] Processing library:', lib.name);
-    
-    if (lib.name && lib.name.includes('fmkore')) {
-      console.error('[ERROR] Found misspelled library:', lib.name);
-    }
-
-    if (lib.downloads && lib.downloads.artifact) {
-      // Новый формат
-      const artifact = lib.downloads.artifact;
-      const filePath = path.join(this.librariesDir, artifact.path);
-      
-      if (!fs.existsSync(filePath)) {
-        console.log(`[FORGE] Скачиваем: ${artifact.path}`);
-        await fs.ensureDir(path.dirname(filePath));
-        try {
-          await this.downloadFile(artifact.url, filePath);
-          console.log(`[FORGE] ✓ Успешно: ${path.basename(filePath)}`);
-        } catch (error) {
-          console.error(`[FORGE] ❌ Ошибка: ${artifact.url} -> ${error.message}`);
-          throw error;
-        }
-      } else {
-        console.log(`[FORGE] ✓ Уже существует: ${artifact.path}`);
-      }
-    } else if (lib.name) {
-      // Старый формат
-      const parts = lib.name.split(':');
-      if (parts.length >= 3) {
-        const [group, artifact, version] = parts;
-        const groupPath = group.replace(/\./g, '/');
-        const fileName = `${artifact}-${version}.jar`;
-        const filePath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
-        
-        if (!fs.existsSync(filePath)) {
-          await fs.ensureDir(path.dirname(filePath));
-          
-          const sources = [
-            `https://maven.minecraftforge.net/${groupPath}/${artifact}/${version}/${fileName}`,
-            `https://libraries.minecraft.net/${groupPath}/${artifact}/${version}/${fileName}`,
-            `https://repo1.maven.org/maven2/${groupPath}/${artifact}/${version}/${fileName}`
-          ];
-          
-          for (const source of sources) {
-            try {
-              await this.downloadFile(source, filePath);
-              console.log(`[FORGE] ✓ Скачано из: ${source}`);
-              break;
-            } catch (error) {
-              console.warn(`[FORGE] ❌ Не удалось скачать из ${source}: ${error.message}`);
-            }
-          }
-        }
-      }
-    }
   }
 
   downloadFile(url, filePath) {

@@ -192,15 +192,18 @@ class MinecraftLauncher {
         libraries: filteredLibraries
       }, logStream);
 
+      // Фильтруем дублирующиеся аргументы
+      const filteredJvmArgs = this.filterDuplicateJvmArgs(jvmArgs);
+
       // Финальная команда запуска
       const allArgs = [
-        ...jvmArgs,
+        ...filteredJvmArgs,
         mainClass,
         ...gameArgs
       ];
 
       console.log('\n=== ФИНАЛЬНАЯ КОМАНДА ЗАПУСКА ===');
-      console.log('JVM аргументов:', jvmArgs.length);
+      console.log('JVM аргументов:', filteredJvmArgs.length);
       console.log('Classpath entries:', filteredLibraries.length);
       console.log('Modulepath entries:', modulepath.length);
       console.log('Main class:', mainClass);
@@ -212,13 +215,13 @@ class MinecraftLauncher {
       logStream.write(`Classpath entries: ${filteredLibraries.length}\n`);
       logStream.write(`Modulepath entries: ${modulepath.length}\n\n`);
       logStream.write('JVM ARGS:\n');
-      jvmArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
+      filteredJvmArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('\nGAME ARGS:\n');
       gameArgs.forEach((arg, i) => logStream.write(`  [${i}] ${arg}\n`));
       logStream.write('='.repeat(80) + '\n\n');
 
       // Создаём BAT файл для отладки
-      await this.createDebugBatFile(gameDir, javaPath, jvmArgs, mainClass, gameArgs);
+      await this.createDebugBatFile(gameDir, javaPath, filteredJvmArgs, mainClass, gameArgs);
 
       // Запуск процесса
       const gameProcess = spawn(javaPath, allArgs, {
@@ -550,9 +553,17 @@ class MinecraftLauncher {
     jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
 
     // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON
+    // и добавляем их в правильном порядке
     if (versionData.arguments && versionData.arguments.jvm) {
       console.log('✓ Используем JVM аргументы из версии JSON');
-      this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
+      
+      // Сначала обрабатываем аргументы из версии JSON
+      const versionJvmArgs = [];
+      this.processVersionJvmArgs(versionData.arguments.jvm, versionJvmArgs, variables, process.platform);
+      
+      // Добавляем аргументы в правильном порядке
+      jvmArgs.push(...versionJvmArgs);
+      
     } else {
       // Только для старых версий добавляем natives path
       jvmArgs.push(`-Djava.library.path=${nativesDir}`);
@@ -563,22 +574,41 @@ class MinecraftLauncher {
       console.log('✓ Добавляем специальные аргументы для Forge');
       
       // Критически важные аргументы для BootstrapLauncher
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util.jar=cpw.mods.securejarhandler');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang.invoke=cpw.mods.securejarhandler');
-      jvmArgs.push('--add-exports');
-      jvmArgs.push('java.base/sun.security.util=cpw.mods.securejarhandler');
-      jvmArgs.push('--add-exports');
-      jvmArgs.push('jdk.naming.dns/com.sun.jndi.dns=java.naming');
+      // Убедимся что они не дублируются с аргументами из версии JSON
+      const criticalArgs = [
+        '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
+        '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler', 
+        '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
+        '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming'
+      ];
+      
+      // Добавляем только если их еще нет
+      for (let i = 0; i < criticalArgs.length; i += 2) {
+        const argName = criticalArgs[i];
+        const argValue = criticalArgs[i + 1];
+        
+        if (!jvmArgs.includes(argName) || jvmArgs[jvmArgs.indexOf(argName) + 1] !== argValue) {
+          jvmArgs.push(argName);
+          jvmArgs.push(argValue);
+        }
+      }
       
       // Для Java 17+ compatibility
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.io=ALL-UNNAMED');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.util=ALL-UNNAMED');
+      const java17Args = [
+        '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.io=ALL-UNNAMED', 
+        '--add-opens', 'java.base/java.util=ALL-UNNAMED'
+      ];
+      
+      for (let i = 0; i < java17Args.length; i += 2) {
+        const argName = java17Args[i];
+        const argValue = java17Args[i + 1];
+        
+        if (!jvmArgs.includes(argName) || jvmArgs[jvmArgs.indexOf(argName) + 1] !== argValue) {
+          jvmArgs.push(argName);
+          jvmArgs.push(argValue);
+        }
+      }
     }
 
     const gameArgs = this.prepareGameArgs(versionData, variables);
@@ -588,6 +618,37 @@ class MinecraftLauncher {
       gameArgs,
       mainClass: versionData.mainClass
     };
+  }
+
+  /**
+   * Проверка и фильтрация дублирующихся аргументов
+   */
+  filterDuplicateJvmArgs(jvmArgs) {
+    const filteredArgs = [];
+    const seenArgs = new Set();
+    
+    for (let i = 0; i < jvmArgs.length; i++) {
+      const arg = jvmArgs[i];
+      
+      // Для аргументов с значениями (--add-opens, --add-exports и т.д.)
+      if (arg.startsWith('--add-') && i + 1 < jvmArgs.length) {
+        const argPair = arg + '=' + jvmArgs[i + 1];
+        if (!seenArgs.has(argPair)) {
+          seenArgs.add(argPair);
+          filteredArgs.push(arg);
+          filteredArgs.push(jvmArgs[i + 1]);
+        }
+        i++; // Пропускаем следующее значение
+      } 
+      // Для одиночных аргументов
+      else if (!seenArgs.has(arg)) {
+        seenArgs.add(arg);
+        filteredArgs.push(arg);
+      }
+    }
+    
+    console.log(`[JVM ARGS] Убрано ${jvmArgs.length - filteredArgs.length} дубликатов`);
+    return filteredArgs;
   }
 
   /**

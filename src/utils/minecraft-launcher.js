@@ -472,69 +472,85 @@ class MinecraftLauncher {
   }
 
   /**
-   * Подготовка аргументов запуска
-   */
-  async prepareLaunchArguments(options, logStream) {
-    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
+ * Подготовка аргументов запуска
+ */
+async prepareLaunchArguments(options, logStream) {
+  const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
 
-    const uuid = this.generateUUID(username);
+  const uuid = this.generateUUID(username);
 
-    let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
-    if (versionData.assetIndex && versionData.assetIndex.id) {
-      assetIndexName = versionData.assetIndex.id;
-    }
-
-    const variables = {
-      auth_player_name: username,
-      version_name: versionId,
-      game_directory: gameDir,
-      assets_root: this.assetsDir,
-      assets_index_name: assetIndexName,
-      auth_uuid: uuid,
-      auth_access_token: uuid,
-      clientid: '0',
-      auth_xuid: '0',
-      user_type: 'legacy',
-      version_type: versionData.type || 'release',
-      natives_directory: nativesDir,
-      launcher_name: 'aureate-launcher',
-      launcher_version: '1.0.0',
-      classpath: classpath,
-      modulepath: modulepath,
-      library_directory: this.librariesDir,
-      classpath_separator: process.platform === 'win32' ? ';' : ':'
-    };
-
-    const jvmArgs = [];
-
-    // Базовые аргументы памяти
-    jvmArgs.push(`-Xmx${memory}M`);
-    jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
-
-    // ВАЖНО: Для современного Forge используем ТОЛЬКО аргументы из версии JSON
-    if (versionData.arguments && versionData.arguments.jvm) {
-      console.log('✓ Используем JVM аргументы из версии JSON');
-      this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
-    } else {
-      // Только для старых версий добавляем natives path
-      jvmArgs.push(`-Djava.library.path=${nativesDir}`);
-    }
-
-    // КРИТИЧЕСКИ ВАЖНО: Добавляем недостающие opens для Java 17+
-    if (modulepath && modulepath.length > 0) {
-      console.log('✓ Добавляем дополнительные аргументы для Java 17+');
-      jvmArgs.push('--add-opens');
-      jvmArgs.push('java.base/java.lang.invoke=ALL-UNNAMED');
-    }
-
-    const gameArgs = this.prepareGameArgs(versionData, variables);
-
-    return {
-      jvmArgs,
-      gameArgs,
-      mainClass: versionData.mainClass
-    };
+  let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
+  if (versionData.assetIndex && versionData.assetIndex.id) {
+    assetIndexName = versionData.assetIndex.id;
   }
+
+  const variables = {
+    auth_player_name: username,
+    version_name: versionId,
+    game_directory: gameDir,
+    assets_root: this.assetsDir,
+    assets_index_name: assetIndexName,
+    auth_uuid: uuid,
+    auth_access_token: uuid,
+    clientid: '0',
+    auth_xuid: '0',
+    user_type: 'legacy',
+    version_type: versionData.type || 'release',
+    natives_directory: nativesDir,
+    launcher_name: 'aureate-launcher',
+    launcher_version: '1.0.0',
+    classpath: classpath,
+    modulepath: modulepath,
+    library_directory: this.librariesDir,
+    classpath_separator: process.platform === 'win32' ? ';' : ':'
+  };
+
+  const jvmArgs = [];
+
+  // Базовые аргументы памяти
+  jvmArgs.push(`-Xmx${memory}M`);
+  jvmArgs.push(`-Xms${Math.floor(memory / 2)}M`);
+
+  // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON
+  if (versionData.arguments && versionData.arguments.jvm) {
+    console.log('✓ Используем JVM аргументы из версии JSON');
+    this.processVersionJvmArgs(versionData.arguments.jvm, jvmArgs, variables, process.platform);
+  } else {
+    // Только для старых версий добавляем natives path
+    jvmArgs.push(`-Djava.library.path=${nativesDir}`);
+  }
+
+  // ДОПОЛНИТЕЛЬНЫЕ АРГУМЕНТЫ ДЛЯ FORGE 1.18+
+  if (isForge) {
+    console.log('✓ Добавляем специальные аргументы для Forge');
+    
+    // Критически важные аргументы для BootstrapLauncher
+    jvmArgs.push('--add-opens');
+    jvmArgs.push('java.base/java.util.jar=cpw.mods.securejarhandler');
+    jvmArgs.push('--add-opens');
+    jvmArgs.push('java.base/java.lang.invoke=cpw.mods.securejarhandler');
+    jvmArgs.push('--add-exports');
+    jvmArgs.push('java.base/sun.security.util=cpw.mods.securejarhandler');
+    jvmArgs.push('--add-exports');
+    jvmArgs.push('jdk.naming.dns/com.sun.jndi.dns=java.naming');
+    
+    // Для Java 17+ compatibility
+    jvmArgs.push('--add-opens');
+    jvmArgs.push('java.base/java.lang=ALL-UNNAMED');
+    jvmArgs.push('--add-opens');
+    jvmArgs.push('java.base/java.io=ALL-UNNAMED');
+    jvmArgs.push('--add-opens');
+    jvmArgs.push('java.base/java.util=ALL-UNNAMED');
+  }
+
+  const gameArgs = this.prepareGameArgs(versionData, variables);
+
+  return {
+    jvmArgs,
+    gameArgs,
+    mainClass: versionData.mainClass
+  };
+}
 
   /**
    * Обработка JVM аргументов из версии

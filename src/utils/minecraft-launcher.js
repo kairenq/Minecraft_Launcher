@@ -243,38 +243,42 @@ class MinecraftLauncher {
   /**
    * Построение classpath и modulepath из библиотек версии
    */
-  async buildPaths(versionData, osName, versionId) {
-    const classpath = [];
-    const modulepath = [];
+async buildPaths(versionData, osName, versionId) {
+  const classpath = [];
+  const modulepath = [];
 
-    // КРИТИЧЕСКИ ВАЖНО: Добавляем клиентский JAR для наследуемых версий (Forge/Fabric)
-    if (versionData.inheritsFrom) {
-        const baseVersion = versionData.inheritsFrom;
-        const baseVersionJar = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
-        const forgeVersionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
-        
-        console.log(`[CLASSPATH] Проверка базового JAR: ${baseVersionJar}`);
-        console.log(`[CLASSPATH] Проверка Forge JAR: ${forgeVersionJar}`);
-        
-        if (fs.existsSync(baseVersionJar)) {
-            classpath.push(baseVersionJar);
-            console.log(`✓ Добавлен базовый клиент: ${baseVersion}.jar`);
-        } else {
-            console.warn(`⚠️ Базовый клиент не найден: ${baseVersionJar}`);
-        }
-        
-        if (fs.existsSync(forgeVersionJar)) {
-            classpath.push(forgeVersionJar);
-            console.log(`✓ Добавлен Forge клиент: ${versionId}.jar`);
-        }
+  console.log(`[DEBUG] Building paths for version: ${versionId}`);
+  console.log(`[DEBUG] Inherits from: ${versionData.inheritsFrom}`);
+
+  // КРИТИЧЕСКИ ВАЖНО: Для наследуемых версий (Forge/Fabric) добавляем оба JAR
+  if (versionData.inheritsFrom) {
+    const baseVersion = versionData.inheritsFrom;
+    
+    // Базовый Minecraft JAR
+    const baseVersionJar = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+    if (fs.existsSync(baseVersionJar)) {
+      classpath.push(baseVersionJar);
+      console.log(`✓ Добавлен базовый клиент: ${baseVersion}.jar`);
     } else {
-        // Для ванильных версий добавляем только основной JAR
-        const versionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
-        if (fs.existsSync(versionJar)) {
-            classpath.push(versionJar);
-            console.log(`✓ Добавлен ванильный клиент: ${versionId}.jar`);
-        }
+      console.warn(`⚠️ Базовый клиент не найден: ${baseVersionJar}`);
     }
+
+    // Forge/Fabric JAR (версия модлоадера)
+    const modLoaderJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
+    if (fs.existsSync(modLoaderJar)) {
+      classpath.push(modLoaderJar);
+      console.log(`✓ Добавлен модлоадер клиент: ${versionId}.jar`);
+    } else {
+      console.log(`ℹ️ Модлоадер JAR не найден (может быть нормально для некоторых версий): ${modLoaderJar}`);
+    }
+  } else {
+    // Для ванильных версий
+    const versionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
+    if (fs.existsSync(versionJar)) {
+      classpath.push(versionJar);
+      console.log(`✓ Добавлен ванильный клиент: ${versionId}.jar`);
+    }
+  }
 
     for (const lib of versionData.libraries) {
         let allowed = true;

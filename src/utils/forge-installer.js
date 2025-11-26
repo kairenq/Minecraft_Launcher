@@ -28,14 +28,14 @@ class ForgeInstaller {
     await this.createDirectories();
 
     try {
-      // Сначала скачиваем ВСЕ библиотеки
-      await this.downloadAllForgeLibraries(mcVersion, forgeVersion, onProgress);
-      
-      // Потом запускаем установщик
+      // Скачиваем и запускаем установщик
       await this.downloadAndRunInstaller(mcVersion, forgeVersion, forgeDir, onProgress);
       
-      // Создаем недостающие файлы
+      // Создаем недостающие файлы если установщик не создал их
       await this.createMissingFiles(mcVersion, forgeVersion, forgeDir);
+      
+      // Загружаем библиотеки
+      await this.downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
       
       console.log(`[FORGE] ✓ Установка завершена: ${forgeId}`);
       return forgeId;
@@ -78,128 +78,6 @@ class ForgeInstaller {
   }
 
   /**
-   * Скачивание ВСЕХ библиотек Forge заранее
-   */
-  async downloadAllForgeLibraries(mcVersion, forgeVersion, onProgress) {
-    console.log('[FORGE] Предварительная загрузка всех библиотек Forge...');
-    
-    const libraries = this.getForgeLibraries(mcVersion, forgeVersion);
-    console.log(`[FORGE] Всего библиотек для загрузки: ${libraries.length}`);
-
-    let downloaded = 0;
-    for (const lib of libraries) {
-      try {
-        await this.downloadLibraryToCorrectPath(lib);
-        downloaded++;
-        
-        if (onProgress) {
-          onProgress({
-            stage: `Библиотеки Forge (${downloaded}/${libraries.length})`,
-            percent: Math.round((downloaded / libraries.length) * 50) // 0-50%
-          });
-        }
-      } catch (error) {
-        console.warn(`[FORGE] Не удалось загрузить ${lib.name}:`, error.message);
-      }
-    }
-
-    console.log(`[FORGE] ✓ Предварительно загружено ${downloaded}/${libraries.length} библиотек`);
-  }
-
-  /**
-   * Получение списка всех библиотек Forge
-   */
-  getForgeLibraries(mcVersion, forgeVersion) {
-    return [
-      {
-        name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
-        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
-      },
-      {
-        name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
-        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
-      },
-      {
-        name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`,
-        url: `https://maven.minecraftforge.net/net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`
-      },
-      {
-        name: `net.minecraftforge:lowcodelanguage:${mcVersion}-${forgeVersion}`,
-        url: `https://maven.minecraftforge.net/net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`
-      },
-      {
-        name: `net.minecraftforge:mclanguage:${mcVersion}-${forgeVersion}`,
-        url: `https://maven.minecraftforge.net/net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`
-      },
-      {
-        name: `cpw.mods:bootstraplauncher:1.1.2`,
-        url: `https://maven.minecraftforge.net/cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar`,
-        path: `cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar`
-      },
-      {
-        name: `cpw.mods:securejarhandler:1.0.8`,
-        url: `https://maven.minecraftforge.net/cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar`,
-        path: `cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar`
-      },
-      {
-        name: `org.ow2.asm:asm:9.3`,
-        url: `https://repo1.maven.org/maven2/org/ow2/asm/asm/9.3/asm-9.3.jar`,
-        path: `org/ow2/asm/asm/9.3/asm-9.3.jar`
-      },
-      {
-        name: `org.ow2.asm:asm-commons:9.3`,
-        url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`,
-        path: `org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`
-      },
-      {
-        name: `org.ow2.asm:asm-tree:9.3`,
-        url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`,
-        path: `org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`
-      },
-      {
-        name: `org.ow2.asm:asm-util:9.3`,
-        url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`,
-        path: `org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`
-      },
-      {
-        name: `org.ow2.asm:asm-analysis:9.3`,
-        url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`,
-        path: `org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`
-      }
-    ];
-  }
-
-  /**
-   * Скачивание библиотеки в правильный путь
-   */
-  async downloadLibraryToCorrectPath(lib) {
-    const filePath = path.join(this.librariesDir, lib.path);
-    
-    if (!fs.existsSync(filePath)) {
-      console.log(`[FORGE] Скачиваем: ${lib.name}`);
-      console.log(`[FORGE]   URL: ${lib.url}`);
-      console.log(`[FORGE]   Путь: ${filePath}`);
-      
-      await fs.ensureDir(path.dirname(filePath));
-      
-      try {
-        await this.downloadFile(lib.url, filePath);
-        console.log(`[FORGE] ✓ Успешно: ${lib.name}`);
-      } catch (error) {
-        console.error(`[FORGE] ❌ Ошибка: ${lib.name} -> ${error.message}`);
-        throw error;
-      }
-    } else {
-      console.log(`[FORGE] ✓ Уже существует: ${lib.name}`);
-    }
-  }
-
-  /**
    * Создание недостающих файлов после установки
    */
   async createMissingFiles(mcVersion, forgeVersion, forgeDir) {
@@ -221,6 +99,98 @@ class ForgeInstaller {
       console.log('[FORGE] Создаем JSON конфиг...');
       await this.createForgeJson(mcVersion, forgeVersion, forgeDir);
     }
+
+    // Проверяем и создаем основные библиотеки Forge
+    await this.createForgeLibraries(mcVersion, forgeVersion);
+  }
+
+  /**
+   * Создание основных библиотек Forge
+   */
+  async createForgeLibraries(mcVersion, forgeVersion) {
+    console.log('[FORGE] Проверка основных библиотек Forge...');
+    
+    const libraries = [
+      {
+        group: 'net/minecraftforge',
+        artifact: 'fmlcore',
+        version: `${mcVersion}-${forgeVersion}`,
+        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
+      },
+      {
+        group: 'net/minecraftforge',
+        artifact: 'fmlloader', 
+        version: `${mcVersion}-${forgeVersion}`,
+        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
+      },
+      {
+        group: 'net/minecraftforge',
+        artifact: 'javafmllanguage',
+        version: `${mcVersion}-${forgeVersion}`,
+        url: `https://maven.minecraftforge.net/net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`
+      },
+      {
+        group: 'net/minecraftforge', 
+        artifact: 'lowcodelanguage',
+        version: `${mcVersion}-${forgeVersion}`,
+        url: `https://maven.minecraftforge.net/net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`
+      },
+      {
+        group: 'net/minecraftforge',
+        artifact: 'mclanguage',
+        version: `${mcVersion}-${forgeVersion}`,
+        url: `https://maven.minecraftforge.net/net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`
+      },
+      {
+        group: 'cpw/mods',
+        artifact: 'bootstraplauncher',
+        version: '1.1.2',
+        url: 'https://maven.minecraftforge.net/cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar'
+      },
+      {
+        group: 'cpw/mods',
+        artifact: 'securejarhandler',
+        version: '1.0.8',
+        url: 'https://maven.minecraftforge.net/cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar'
+      }
+    ];
+
+    let createdCount = 0;
+    for (const lib of libraries) {
+      const libPath = path.join(this.librariesDir, lib.group, lib.artifact, lib.version, `${lib.artifact}-${lib.version}.jar`);
+      
+      if (!fs.existsSync(libPath)) {
+        console.log(`[FORGE] Скачиваем библиотеку: ${lib.artifact}-${lib.version}`);
+        try {
+          await this.downloadLibraryFile(lib.url, libPath);
+          createdCount++;
+        } catch (error) {
+          console.warn(`[FORGE] Не удалось скачать ${lib.artifact}:`, error.message);
+        }
+      }
+    }
+
+    console.log(`[FORGE] ✓ Создано/проверено ${createdCount} библиотек`);
+  }
+
+  /**
+   * Скачивание файла библиотеки
+   */
+  async downloadLibraryFile(url, filePath) {
+    return new Promise((resolve, reject) => {
+      https.get(url, (response) => {
+        if (response.statusCode === 200) {
+          const file = fs.createWriteStream(filePath);
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            resolve();
+          });
+        } else {
+          reject(new Error(`HTTP ${response.statusCode}`));
+        }
+      }).on('error', reject);
+    });
   }
 
   /**
@@ -235,7 +205,7 @@ class ForgeInstaller {
     console.log(`[FORGE] URL: ${installerUrl}`);
 
     // Скачиваем установщик
-    await this.downloadFileWithProgress(installerUrl, installerPath, onProgress, 50, 70);
+    await this.downloadFileWithProgress(installerUrl, installerPath, onProgress);
 
     // Запускаем установщик
     console.log('[FORGE] Запуск установщика Forge...');
@@ -268,13 +238,12 @@ class ForgeInstaller {
 
       javaProcess.on('close', (code) => {
         console.log(`[FORGE] Установщик завершился с кодом: ${code}`);
-        // Forge installer часто возвращает 1 даже при успехе
-        if (code === 0 || code === 1) {
+        if (code === 0 || code === 1) { // Forge installer часто возвращает 1 даже при успехе
           console.log('[FORGE] ✓ Установщик завершен');
           resolve(output);
         } else {
           console.warn(`[FORGE] Установщик завершился с кодом ${code}, продолжаем...`);
-          resolve(output);
+          resolve(output); // Все равно продолжаем
         }
       });
 
@@ -293,14 +262,66 @@ class ForgeInstaller {
   }
 
   /**
+   * Загрузка библиотек Forge
+   */
+  async downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress) {
+    const forgeId = `${mcVersion}-forge-${forgeVersion}`;
+    const versionJsonPath = path.join(forgeDir, `${forgeId}.json`);
+
+    // Если JSON не создался установщиком - создаем вручную
+    if (!fs.existsSync(versionJsonPath)) {
+      console.log('[FORGE] JSON конфиг не найден, создаем вручную...');
+      await this.createForgeJson(mcVersion, forgeVersion, forgeDir);
+    }
+
+    // Загружаем библиотеки из конфига
+    const versionData = await fs.readJson(versionJsonPath);
+    const libraries = versionData.libraries || [];
+
+    console.log(`[FORGE] Загрузка ${libraries.length} библиотек...`);
+
+    let downloaded = 0;
+    for (const lib of libraries) {
+      try {
+        await this.downloadLibrary(lib);
+        downloaded++;
+        
+        if (onProgress) {
+          onProgress({
+            stage: `Библиотеки Forge (${downloaded}/${libraries.length})`,
+            percent: Math.round((downloaded / libraries.length) * 80) + 20 // 20-100%
+          });
+        }
+      } catch (error) {
+        console.warn(`[FORGE] Не удалось загрузить ${lib.name}:`, error.message);
+      }
+    }
+
+    console.log(`[FORGE] ✓ Загружено ${downloaded}/${libraries.length} библиотек`);
+  }
+
+  /**
    * Создание JSON конфига для Forge
    */
   async createForgeJson(mcVersion, forgeVersion, forgeDir) {
     const forgeId = `${mcVersion}-forge-${forgeVersion}`;
     const jsonPath = path.join(forgeDir, `${forgeId}.json`);
 
-    console.log('[FORGE] Создаем JSON конфиг для Forge...');
-    
+    // Пробуем скачать готовый JSON конфиг для Forge 1.18.2
+    try {
+      const officialUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}.json`;
+      console.log(`[FORGE] Попытка загрузить официальный конфиг: ${officialUrl}`);
+      
+      const response = await axios.get(officialUrl, { timeout: 10000 });
+      await fs.writeJson(jsonPath, response.data, { spaces: 2 });
+      console.log('[FORGE] ✓ Официальный конфиг загружен');
+      return;
+    } catch (error) {
+      console.warn('[FORGE] Не удалось загрузить официальный конфиг:', error.message);
+    }
+
+    // Создаем базовый конфиг для Forge 1.18.2
+    console.log('[FORGE] Создаем базовый конфиг для Forge 1.18.2...');
     const baseConfig = {
       id: forgeId,
       time: new Date().toISOString(),
@@ -311,8 +332,8 @@ class ForgeInstaller {
       arguments: {
         game: [
           "--gameDir", "${game_directory}",
-          "--width", "854", 
-          "--height", "480"
+          "--width", "${resolution_width}", 
+          "--height", "${resolution_height}"
         ],
         jvm: [
           "-Djava.library.path=${natives_directory}",
@@ -330,26 +351,176 @@ class ForgeInstaller {
           "-cp", "${classpath}"
         ]
       },
-      libraries: this.getForgeLibraries(mcVersion, forgeVersion).map(lib => ({
-        name: lib.name,
-        downloads: {
-          artifact: {
-            url: lib.url,
-            path: lib.path,
-            sha1: "",
-            size: 0
+      libraries: [
+        {
+          name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/javafmllanguage/${mcVersion}-${forgeVersion}/javafmllanguage-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:lowcodelanguage:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/lowcodelanguage/${mcVersion}-${forgeVersion}/lowcodelanguage-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:mclanguage:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/mclanguage/${mcVersion}-${forgeVersion}/mclanguage-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `cpw.mods:bootstraplauncher:1.1.2`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar`,
+              path: `cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar`
+            }
+          }
+        },
+        {
+          name: `cpw.mods:securejarhandler:1.0.8`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar`,
+              path: `cpw/mods/securejarhandler/1.0.8/securejarhandler-1.0.8.jar`
+            }
+          }
+        },
+        {
+          name: `org.ow2.asm:asm:9.3`,
+          downloads: {
+            artifact: {
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm/9.3/asm-9.3.jar`,
+              path: `org/ow2/asm/asm/9.3/asm-9.3.jar`
+            }
+          }
+        },
+        {
+          name: `org.ow2.asm:asm-commons:9.3`,
+          downloads: {
+            artifact: {
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`,
+              path: `org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`
+            }
+          }
+        },
+        {
+          name: `org.ow2.asm:asm-tree:9.3`,
+          downloads: {
+            artifact: {
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`,
+              path: `org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`
+            }
+          }
+        },
+        {
+          name: `org.ow2.asm:asm-util:9.3`,
+          downloads: {
+            artifact: {
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`,
+              path: `org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`
+            }
+          }
+        },
+        {
+          name: `org.ow2.asm:asm-analysis:9.3`,
+          downloads: {
+            artifact: {
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`,
+              path: `org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`
+            }
           }
         }
-      }))
+      ]
     };
 
     await fs.writeJson(jsonPath, baseConfig, { spaces: 2 });
-    console.log('[FORGE] ✓ JSON конфиг создан');
+    console.log('[FORGE] ✓ Базовый конфиг создан');
   }
 
   /**
-   * Загрузка файла
+   * Загрузка одной библиотеки
    */
+  async downloadLibrary(lib) {
+    if (lib.downloads && lib.downloads.artifact) {
+      // Новый формат
+      const artifact = lib.downloads.artifact;
+      const filePath = path.join(this.librariesDir, artifact.path);
+      
+      if (!fs.existsSync(filePath)) {
+        console.log(`[FORGE] Скачиваем: ${artifact.path}`);
+        await fs.ensureDir(path.dirname(filePath));
+        try {
+          await this.downloadFile(artifact.url, filePath);
+          console.log(`[FORGE] ✓ Успешно: ${path.basename(filePath)}`);
+        } catch (error) {
+          console.error(`[FORGE] ❌ Ошибка: ${artifact.url} -> ${error.message}`);
+          throw error;
+        }
+      } else {
+        console.log(`[FORGE] ✓ Уже существует: ${artifact.path}`);
+      }
+    } else if (lib.name) {
+      // Старый формат
+      const parts = lib.name.split(':');
+      if (parts.length >= 3) {
+        const [group, artifact, version] = parts;
+        const groupPath = group.replace(/\./g, '/');
+        const fileName = `${artifact}-${version}.jar`;
+        const filePath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
+        
+        if (!fs.existsSync(filePath)) {
+          await fs.ensureDir(path.dirname(filePath));
+          
+          const sources = [
+            `https://maven.minecraftforge.net/${groupPath}/${artifact}/${version}/${fileName}`,
+            `https://libraries.minecraft.net/${groupPath}/${artifact}/${version}/${fileName}`,
+            `https://repo1.maven.org/maven2/${groupPath}/${artifact}/${version}/${fileName}`
+          ];
+          
+          for (const source of sources) {
+            try {
+              await this.downloadFile(source, filePath);
+              console.log(`[FORGE] ✓ Скачано из: ${source}`);
+              break;
+            } catch (error) {
+              console.warn(`[FORGE] ❌ Не удалось скачать из ${source}: ${error.message}`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   downloadFile(url, filePath) {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(filePath);
@@ -368,10 +539,7 @@ class ForgeInstaller {
     });
   }
 
-  /**
-   * Загрузка файла с прогрессом
-   */
-  downloadFileWithProgress(url, filePath, onProgress, startPercent = 0, endPercent = 100) {
+  downloadFileWithProgress(url, filePath, onProgress) {
     return new Promise((resolve, reject) => {
       https.get(url, (response) => {
         if (response.statusCode !== 200) {
@@ -387,10 +555,9 @@ class ForgeInstaller {
         response.on('data', (chunk) => {
           downloadedSize += chunk.length;
           if (onProgress && totalSize) {
-            const progress = startPercent + ((downloadedSize / totalSize) * (endPercent - startPercent));
             onProgress({
-              stage: 'Загрузка установщика Forge',
-              percent: Math.round(progress)
+              stage: 'Загрузка Forge',
+              percent: Math.round((downloadedSize / totalSize) * 20) // 0-20%
             });
           }
         });

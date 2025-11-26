@@ -550,22 +550,22 @@ async buildPaths(versionData, osName, versionId) {
       classpath_separator: process.platform === 'win32' ? ';' : ':'
     };
 
-    const jvmArgs = [
+const jvmArgs = [
     `-Xmx${memory}M`,
     `-Xms${Math.floor(memory / 2)}M`,
-    '-Djava.library.path=${natives_directory}',
-    '-Dminecraft.launcher.brand=${launcher_name}',
-    '-Dminecraft.launcher.version=${launcher_version}',
-    '-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,${version_name}.jar',
+    `-Djava.library.path=${nativesDir}`,
+    `-Dminecraft.launcher.brand=aureate-launcher`,
+    `-Dminecraft.launcher.version=1.0.0`,
+    `-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,${versionId}.jar`,
     '-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar',
-    '-DlibraryDirectory=${library_directory}',
-    '-p', '${modulepath}',
+    `-DlibraryDirectory=${this.librariesDir}`,
+    '-p', modulepath,
     '--add-modules', 'ALL-MODULE-PATH',
     '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
     '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler', 
     '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
     '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming',
-    '-cp', '${classpath}'
+    '-cp', classpath
 ];
 
     // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON

@@ -307,19 +307,6 @@ class ForgeInstaller {
     const forgeId = `${mcVersion}-forge-${forgeVersion}`;
     const jsonPath = path.join(forgeDir, `${forgeId}.json`);
 
-    // Пробуем скачать официальный конфиг
-    try {
-      const officialUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}.json`;
-      console.log(`[FORGE] Попытка загрузить официальный конфиг: ${officialUrl}`);
-      
-      const response = await axios.get(officialUrl, { timeout: 10000 });
-      await fs.writeJson(jsonPath, response.data, { spaces: 2 });
-      console.log('[FORGE] ✓ Официальный конфиг загружен');
-      return;
-    } catch (error) {
-      console.warn('[FORGE] Не удалось загрузить официальный конфиг:', error.message);
-    }
-
     // Создаем базовый конфиг для Forge 1.18.2
     console.log('[FORGE] Создаем базовый конфиг для Forge 1.18.2...');
     const baseConfig = {
@@ -419,7 +406,7 @@ class ForgeInstaller {
           name: `org.ow2.asm:asm:9.3`,
           downloads: {
             artifact: {
-              url: `https://maven.minecraftforge.net/org/ow2/asm/asm/9.3/asm-9.3.jar`,
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm/9.3/asm-9.3.jar`,
               path: `org/ow2/asm/asm/9.3/asm-9.3.jar`
             }
           }
@@ -428,7 +415,7 @@ class ForgeInstaller {
           name: `org.ow2.asm:asm-commons:9.3`,
           downloads: {
             artifact: {
-              url: `https://maven.minecraftforge.net/org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`,
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`,
               path: `org/ow2/asm/asm-commons/9.3/asm-commons-9.3.jar`
             }
           }
@@ -437,7 +424,7 @@ class ForgeInstaller {
           name: `org.ow2.asm:asm-tree:9.3`,
           downloads: {
             artifact: {
-              url: `https://maven.minecraftforge.net/org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`,
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`,
               path: `org/ow2/asm/asm-tree/9.3/asm-tree-9.3.jar`
             }
           }
@@ -446,7 +433,7 @@ class ForgeInstaller {
           name: `org.ow2.asm:asm-util:9.3`,
           downloads: {
             artifact: {
-              url: `https://maven.minecraftforge.net/org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`,
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`,
               path: `org/ow2/asm/asm-util/9.3/asm-util-9.3.jar`
             }
           }
@@ -455,7 +442,7 @@ class ForgeInstaller {
           name: `org.ow2.asm:asm-analysis:9.3`,
           downloads: {
             artifact: {
-              url: `https://maven.minecraftforge.net/org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`,
+              url: `https://repo1.maven.org/maven2/org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`,
               path: `org/ow2/asm/asm-analysis/9.3/asm-analysis-9.3.jar`
             }
           }
@@ -474,11 +461,20 @@ class ForgeInstaller {
     if (lib.downloads && lib.downloads.artifact) {
       // Новый формат
       const artifact = lib.downloads.artifact;
-      const filePath = path.join(this.librariesDir, artifact.path.split('/').join(path.sep));
+      const filePath = path.join(this.librariesDir, artifact.path);
       
       if (!fs.existsSync(filePath)) {
+        console.log(`[FORGE] Скачиваем: ${artifact.path}`);
         await fs.ensureDir(path.dirname(filePath));
-        await this.downloadFile(artifact.url, filePath);
+        try {
+          await this.downloadFile(artifact.url, filePath);
+          console.log(`[FORGE] ✓ Успешно: ${path.basename(filePath)}`);
+        } catch (error) {
+          console.error(`[FORGE] ❌ Ошибка: ${artifact.url} -> ${error.message}`);
+          throw error;
+        }
+      } else {
+        console.log(`[FORGE] ✓ Уже существует: ${artifact.path}`);
       }
     } else if (lib.name) {
       // Старый формат
@@ -501,9 +497,10 @@ class ForgeInstaller {
           for (const source of sources) {
             try {
               await this.downloadFile(source, filePath);
+              console.log(`[FORGE] ✓ Скачано из: ${source}`);
               break;
             } catch (error) {
-              // Пробуем следующий источник
+              console.warn(`[FORGE] ❌ Не удалось скачать из ${source}: ${error.message}`);
             }
           }
         }

@@ -668,28 +668,35 @@ class MinecraftDownloader {
   /**
    * Создание клиентской библиотеки для Forge
    */
-  async createClientLibrary(version) {
-    const clientJarPath = path.join(this.versionsDir, version, `${version}.jar`);
-    const forgeClientPath = path.join(this.librariesDir, 'net', 'minecraft', 'client', version, `client-${version}.jar`);
-    
-    console.log(`[CLIENT LIB] Создание клиентской библиотеки для Forge...`);
-    console.log(`[CLIENT LIB] Источник: ${clientJarPath}`);
-    console.log(`[CLIENT LIB] Назначение: ${forgeClientPath}`);
+async createClientLibrary(version) {
+  const clientJarPath = path.join(this.versionsDir, version, `${version}.jar`);
+  
+  // Правильный путь для Forge клиентской библиотеки
+  const forgeClientPath = path.join(
+    this.librariesDir, 
+    'net', 'minecraft', 'client', 
+    version, 
+    `client-${version}.jar`
+  );
+  
+  console.log(`[CLIENT LIB] Создание клиентской библиотеки для Forge...`);
+  console.log(`[CLIENT LIB] Источник: ${clientJarPath}`);
+  console.log(`[CLIENT LIB] Назначение: ${forgeClientPath}`);
 
-    if (!fs.existsSync(clientJarPath)) {
-      console.warn(`[CLIENT LIB] ⚠️  Клиентский JAR не найден: ${clientJarPath}`);
-      return;
-    }
-
-    if (!fs.existsSync(forgeClientPath)) {
-      console.log(`[CLIENT LIB] Копируем клиентский JAR для Forge...`);
-      await fs.ensureDir(path.dirname(forgeClientPath));
-      await fs.copy(clientJarPath, forgeClientPath);
-      console.log(`[CLIENT LIB] ✓ Клиентская библиотека создана: client-${version}.jar`);
-    } else {
-      console.log(`[CLIENT LIB] ✓ Клиентская библиотека уже существует`);
-    }
+  if (!fs.existsSync(clientJarPath)) {
+    console.warn(`[CLIENT LIB] ⚠️ Клиентский JAR не найден: ${clientJarPath}`);
+    return;
   }
+
+  if (!fs.existsSync(forgeClientPath)) {
+    console.log(`[CLIENT LIB] Копируем клиентский JAR для Forge...`);
+    await fs.ensureDir(path.dirname(forgeClientPath));
+    await fs.copy(clientJarPath, forgeClientPath);
+    console.log(`[CLIENT LIB] ✓ Клиентская библиотека создана: client-${version}.jar`);
+  } else {
+    console.log(`[CLIENT LIB] ✓ Клиентская библиотека уже существует`);
+  }
+}
 
   getVersionPath(version) {
     return path.join(this.versionsDir, version);

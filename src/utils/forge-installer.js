@@ -34,8 +34,8 @@ class ForgeInstaller {
       // Создаем недостающие файлы если установщик не создал их
       await this.createMissingFiles(mcVersion, forgeVersion, forgeDir);
       
-      // Загружаем библиотеки
-      await this.downloadForge(mcVersion, forgeVersion, forgeDir, onProgress);
+      // Загружаем библиотеки - ИСПРАВЛЕННЫЙ ВЫЗОВ
+      await this.downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress);
       
       console.log(`[FORGE] ✓ Установка завершена: ${forgeId}`);
       return forgeId;
@@ -262,7 +262,7 @@ class ForgeInstaller {
   }
 
   /**
-   * Загрузка библиотек Forge
+   * Загрузка библиотек Forge - ИСПРАВЛЕННЫЙ МЕТОД
    */
   async downloadForgeLibraries(mcVersion, forgeVersion, forgeDir, onProgress) {
     const forgeId = `${mcVersion}-forge-${forgeVersion}`;
@@ -276,6 +276,10 @@ class ForgeInstaller {
 
     // Загружаем библиотеки из конфига
     const versionData = await fs.readJson(versionJsonPath);
+    
+    // Исправляем опечатки в библиотеках
+    await this.fixMisspelledLibraries(versionData);
+
     const libraries = versionData.libraries || [];
 
     console.log(`[FORGE] Загрузка ${libraries.length} библиотек...`);
@@ -298,6 +302,32 @@ class ForgeInstaller {
     }
 
     console.log(`[FORGE] ✓ Загружено ${downloaded}/${libraries.length} библиотек`);
+  }
+
+  /**
+   * Исправление опечаток в библиотеках
+   */
+  async fixMisspelledLibraries(versionData) {
+    if (!versionData.libraries) return;
+    
+    let fixed = 0;
+    for (const lib of versionData.libraries) {
+      if (lib.name && lib.name.includes('fmkore')) {
+        const correctName = lib.name.replace('fmkore', 'fmlcore');
+        console.log(`[FIX] Correcting library: ${lib.name} -> ${correctName}`);
+        lib.name = correctName;
+        
+        if (lib.downloads && lib.downloads.artifact) {
+          lib.downloads.artifact.path = lib.downloads.artifact.path.replace('fmkore', 'fmlcore');
+          lib.downloads.artifact.url = lib.downloads.artifact.url.replace('fmkore', 'fmlcore');
+        }
+        fixed++;
+      }
+    }
+    
+    if (fixed > 0) {
+      console.log(`[FIX] Corrected ${fixed} misspelled libraries`);
+    }
   }
 
   /**
@@ -351,25 +381,25 @@ class ForgeInstaller {
           "-cp", "${classpath}"
         ]
       },
-libraries: [
-  {
-    name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
-    downloads: {
-      artifact: {
-        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
-      }
-    }
-  },
-  {
-    name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
-    downloads: {
-      artifact: {
-        url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
-        path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
-      }
-    }
-  },
+      libraries: [
+        {
+          name: `net.minecraftforge:fmlcore:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/fmlcore/${mcVersion}-${forgeVersion}/fmlcore-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
+        {
+          name: `net.minecraftforge:fmlloader:${mcVersion}-${forgeVersion}`,
+          downloads: {
+            artifact: {
+              url: `https://maven.minecraftforge.net/net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`,
+              path: `net/minecraftforge/fmlloader/${mcVersion}-${forgeVersion}/fmlloader-${mcVersion}-${forgeVersion}.jar`
+            }
+          }
+        },
         {
           name: `net.minecraftforge:javafmllanguage:${mcVersion}-${forgeVersion}`,
           downloads: {
@@ -471,6 +501,12 @@ libraries: [
    * Загрузка одной библиотеки
    */
   async downloadLibrary(lib) {
+    console.log('[DEBUG] Processing library:', lib.name);
+    
+    if (lib.name && lib.name.includes('fmkore')) {
+      console.error('[ERROR] Found misspelled library:', lib.name);
+    }
+
     if (lib.downloads && lib.downloads.artifact) {
       // Новый формат
       const artifact = lib.downloads.artifact;

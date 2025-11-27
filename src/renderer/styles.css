@@ -5,6 +5,24 @@
   box-sizing: border-box;
 }
 
+/* Minecraft Font Import */
+@font-face {
+  font-family: 'Minecraft';
+  src: url('https://cdn.jsdelivr.net/npm/@fontsource/minecraftia@1.0.1/files/minecraftia-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Minecraft';
+  src: url('https://cdn.jsdelivr.net/npm/@fontsource/minecraftia@1.0.1/files/minecraftia-cyrillic-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+  font-display: swap;
+}
+
 /* Цветовая схема */
 :root {
   /* Фон */
@@ -21,6 +39,7 @@
   /* Акценты */
   --accent: #00d9ff;
   --accent-hover: #00b8d9;
+  --accent-dark: #0099b3;
   --accent-dim: rgba(0, 217, 255, 0.1);
 
   /* Состояния */
@@ -62,6 +81,66 @@ body.light-theme {
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* Purple Dream */
+body.purple-theme {
+  --bg-primary: #0d0520;
+  --bg-secondary: #1a0f35;
+  --bg-tertiary: #251447;
+  --bg-elevated: #301959;
+  --accent: #a855f7;
+  --accent-hover: #9333ea;
+  --accent-dark: #7e22ce;
+  --accent-dim: rgba(168, 85, 247, 0.1);
+}
+
+/* Ocean Blue */
+body.ocean-theme {
+  --bg-primary: #02111b;
+  --bg-secondary: #041e31;
+  --bg-tertiary: #052c42;
+  --bg-elevated: #073952;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-dark: #1d4ed8;
+  --accent-dim: rgba(59, 130, 246, 0.1);
+}
+
+/* Forest Green */
+body.forest-theme {
+  --bg-primary: #0a1409;
+  --bg-secondary: #122010;
+  --bg-tertiary: #1a2e18;
+  --bg-elevated: #223b1f;
+  --accent: #22c55e;
+  --accent-hover: #16a34a;
+  --accent-dark: #15803d;
+  --accent-dim: rgba(34, 197, 94, 0.1);
+}
+
+/* Sunset Orange */
+body.sunset-theme {
+  --bg-primary: #1a0f08;
+  --bg-secondary: #2d180e;
+  --bg-tertiary: #402114;
+  --bg-elevated: #532a1a;
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --accent-dark: #c2410c;
+  --accent-dim: rgba(249, 115, 22, 0.1);
+}
+
+/* Crimson Red */
+body.crimson-theme {
+  --bg-primary: #1a0505;
+  --bg-secondary: #2d0a0a;
+  --bg-tertiary: #400e0e;
+  --bg-elevated: #531313;
+  --accent: #ef4444;
+  --accent-hover: #dc2626;
+  --accent-dark: #b91c1c;
+  --accent-dim: rgba(239, 68, 68, 0.1);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background: var(--bg-primary);
@@ -93,27 +172,17 @@ body {
   padding: var(--spacing-lg) var(--spacing-md);
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
   border-bottom: 1px solid var(--border);
 }
 
-.logo-icon {
-  width: 36px;
-  height: 36px;
-  background: var(--accent);
-  color: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 18px;
-  border-radius: 6px;
-}
-
 .logo-text {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
+  font-family: 'Minecraft', monospace;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
 }
 
 .sidebar-nav {
@@ -135,8 +204,10 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+  font-family: 'Minecraft', monospace;
+  text-transform: uppercase;
 }
 
 .nav-btn:hover {
@@ -156,6 +227,37 @@ body {
 .sidebar-footer {
   padding: var(--spacing-md);
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.sidebar-social {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.sidebar-social-link {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.sidebar-social-link:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
 }
 
 .user-info {
@@ -179,8 +281,9 @@ body {
 }
 
 .username {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
+  font-family: 'Minecraft', monospace;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -898,13 +1001,13 @@ body {
 }
 
 .stage.completed .stage-icon {
-  background: var(--success);
-  border-color: var(--success);
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
   color: var(--bg-primary);
 }
 
 .stage.completed .stage-label {
-  color: var(--success);
+  color: var(--accent-dark);
 }
 
 @keyframes pulse {
@@ -1710,4 +1813,73 @@ body.glassmorphism-enabled.light-theme .context-menu {
   .page-container {
     padding: var(--spacing-lg);
   }
+}
+
+/* ========================
+   ФОНОВЫЕ ИЗОБРАЖЕНИЯ
+   ======================== */
+body.bg-none {
+  background: var(--bg-primary);
+}
+
+body.bg-stars {
+  background:
+    radial-gradient(2px 2px at 20px 30px, white, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 60px 70px, white, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 50px 50px, white, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 130px 80px, white, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 90px 10px, white, rgba(0,0,0,0)),
+    var(--bg-primary);
+  background-size: 200px 200px;
+  background-repeat: repeat;
+}
+
+body.bg-grid {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-color: var(--bg-primary);
+}
+
+body.bg-dots {
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-color: var(--bg-primary);
+}
+
+body.bg-minecraft {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--bg-primary),
+      var(--bg-primary) 10px,
+      var(--bg-secondary) 10px,
+      var(--bg-secondary) 20px
+    );
+}
+
+body.bg-custom {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Overlay для лучшей читаемости с фоном */
+body[class*="bg-"]:not(.bg-none) .content {
+  position: relative;
+}
+
+body[class*="bg-"]:not(.bg-none) .content::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  opacity: 0.85;
+  z-index: -1;
+  pointer-events: none;
 }

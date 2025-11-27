@@ -329,23 +329,46 @@ function setupNavigation() {
 
 // Настройка ссылок на соц сети
 function setupSocialLinks() {
-  document.getElementById('social-discord').addEventListener('click', (e) => {
-    e.preventDefault();
-    // ipcRenderer.send('open-external', 'https://discord.gg/your-server');
-    console.log('Discord link clicked');
-  });
+  // ========================================
+  // 📍 ВАЖНО: ЗДЕСЬ УСТАНОВИТЬ СВОИ ССЫЛКИ
+  // ========================================
+  const SOCIAL_LINKS = {
+    discord: 'https://discord.gg/your-server',     // <-- ВАШ DISCORD СЕРВЕР
+    telegram: 'https://t.me/your-channel',         // <-- ВАШ TELEGRAM КАНАЛ
+    boosty: 'https://boosty.to/your-page'          // <-- ВАШ BOOSTY
+  };
 
-  document.getElementById('social-telegram').addEventListener('click', (e) => {
-    e.preventDefault();
-    // ipcRenderer.send('open-external', 'https://t.me/your-channel');
-    console.log('Telegram link clicked');
-  });
+  const { shell } = require('electron');
 
-  document.getElementById('social-boosty').addEventListener('click', (e) => {
-    e.preventDefault();
-    // ipcRenderer.send('open-external', 'https://boosty.to/your-page');
-    console.log('Boosty link clicked');
-  });
+  // Discord
+  const discordLink = document.getElementById('social-discord-sidebar');
+  if (discordLink) {
+    discordLink.href = SOCIAL_LINKS.discord;
+    discordLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      shell.openExternal(SOCIAL_LINKS.discord);
+    });
+  }
+
+  // Telegram
+  const telegramLink = document.getElementById('social-telegram-sidebar');
+  if (telegramLink) {
+    telegramLink.href = SOCIAL_LINKS.telegram;
+    telegramLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      shell.openExternal(SOCIAL_LINKS.telegram);
+    });
+  }
+
+  // Boosty
+  const boostyLink = document.getElementById('social-boosty-sidebar');
+  if (boostyLink) {
+    boostyLink.href = SOCIAL_LINKS.boosty;
+    boostyLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      shell.openExternal(SOCIAL_LINKS.boosty);
+    });
+  }
 }
 
 // Настройка списка модов
@@ -500,12 +523,34 @@ function setupSettings() {
 
   themeSelect.addEventListener('change', (e) => {
     const newTheme = e.target.value;
-    isDarkTheme = newTheme === 'dark';
+    applyTheme(newTheme);
+  });
 
-    if (isDarkTheme) {
-      document.body.classList.remove('light-theme');
+  // Настройка фона
+  const backgroundSelect = document.getElementById('background-select');
+  const customBgField = document.getElementById('custom-bg-field');
+  const customBgInput = document.getElementById('custom-bg-input');
+  const applyCustomBgBtn = document.getElementById('apply-custom-bg');
+
+  backgroundSelect.value = config.background || 'none';
+  if (config.backgroundImage) {
+    customBgInput.value = config.backgroundImage;
+  }
+
+  backgroundSelect.addEventListener('change', (e) => {
+    const bg = e.target.value;
+    if (bg === 'custom') {
+      customBgField.style.display = 'block';
     } else {
-      document.body.classList.add('light-theme');
+      customBgField.style.display = 'none';
+      applyBackground(bg, null);
+    }
+  });
+
+  applyCustomBgBtn.addEventListener('click', () => {
+    const bgUrl = customBgInput.value.trim();
+    if (bgUrl) {
+      applyBackground('custom', bgUrl);
     }
   });
 
@@ -520,7 +565,9 @@ function setupSettings() {
       allocatedMemory: parseInt(memorySlider.value),
       windowWidth: parseInt(windowSize.value.split('x')[0]),
       windowHeight: parseInt(windowSize.value.split('x')[1]),
-      theme: themeSelect.value
+      theme: themeSelect.value,
+      background: backgroundSelect.value,
+      backgroundImage: customBgInput.value.trim()
     };
 
     try {
@@ -1129,6 +1176,33 @@ function setupKeyboardShortcuts() {
       document.getElementById('nav-settings').click();
     }
   });
+}
+
+// ===== ПРИМЕНЕНИЕ ТЕМЫ =====
+function applyTheme(theme) {
+  // Удаляем все theme классы
+  document.body.classList.remove('light-theme', 'purple-theme', 'ocean-theme', 'forest-theme', 'sunset-theme', 'crimson-theme');
+
+  // Применяем новую тему
+  if (theme !== 'dark') {
+    document.body.classList.add(`${theme}-theme`);
+  }
+}
+
+// ===== ПРИМЕНЕНИЕ ФОНА =====
+function applyBackground(bg, customUrl) {
+  // Удаляем все bg классы
+  document.body.classList.remove('bg-none', 'bg-stars', 'bg-grid', 'bg-dots', 'bg-minecraft', 'bg-custom');
+
+  // Применяем новый фон
+  document.body.classList.add(`bg-${bg}`);
+
+  // Если кастомный фон, устанавливаем URL
+  if (bg === 'custom' && customUrl) {
+    document.body.style.backgroundImage = `url(${customUrl})`;
+  } else {
+    document.body.style.backgroundImage = '';
+  }
 }
 
 // Обработка ошибок

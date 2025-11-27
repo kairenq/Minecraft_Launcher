@@ -5,23 +5,9 @@
   box-sizing: border-box;
 }
 
-/* Minecraft Font Import */
-@font-face {
-  font-family: 'Minecraft';
-  src: url('https://cdn.jsdelivr.net/npm/@fontsource/minecraftia@1.0.1/files/minecraftia-latin-400-normal.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* Minecraft Font Import - использую Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-@font-face {
-  font-family: 'Minecraft';
-  src: url('https://cdn.jsdelivr.net/npm/@fontsource/minecraftia@1.0.1/files/minecraftia-cyrillic-400-normal.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
-  font-display: swap;
-}
 
 /* Цветовая схема */
 :root {
@@ -81,64 +67,64 @@ body.light-theme {
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Purple Dream */
+/* Midnight Purple - приглушенный фиолетовый */
 body.purple-theme {
-  --bg-primary: #0d0520;
-  --bg-secondary: #1a0f35;
-  --bg-tertiary: #251447;
-  --bg-elevated: #301959;
-  --accent: #a855f7;
-  --accent-hover: #9333ea;
-  --accent-dark: #7e22ce;
-  --accent-dim: rgba(168, 85, 247, 0.1);
+  --bg-primary: #0f0c1a;
+  --bg-secondary: #1a1625;
+  --bg-tertiary: #24202f;
+  --bg-elevated: #2e2939;
+  --accent: #8b7fc7;
+  --accent-hover: #a599d4;
+  --accent-dark: #6b5fa8;
+  --accent-dim: rgba(139, 127, 199, 0.1);
 }
 
-/* Ocean Blue */
+/* Deep Ocean - приглушенный синий */
 body.ocean-theme {
-  --bg-primary: #02111b;
-  --bg-secondary: #041e31;
-  --bg-tertiary: #052c42;
-  --bg-elevated: #073952;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-dark: #1d4ed8;
-  --accent-dim: rgba(59, 130, 246, 0.1);
+  --bg-primary: #0c1419;
+  --bg-secondary: #131e26;
+  --bg-tertiary: #1a2832;
+  --bg-elevated: #21323f;
+  --accent: #5a9fbe;
+  --accent-hover: #74b3cd;
+  --accent-dark: #4785a1;
+  --accent-dim: rgba(90, 159, 190, 0.1);
 }
 
-/* Forest Green */
+/* Forest Night - приглушенный зеленый */
 body.forest-theme {
-  --bg-primary: #0a1409;
-  --bg-secondary: #122010;
-  --bg-tertiary: #1a2e18;
-  --bg-elevated: #223b1f;
-  --accent: #22c55e;
-  --accent-hover: #16a34a;
-  --accent-dark: #15803d;
-  --accent-dim: rgba(34, 197, 94, 0.1);
+  --bg-primary: #0d1410;
+  --bg-secondary: #151e18;
+  --bg-tertiary: #1d2820;
+  --bg-elevated: #253228;
+  --accent: #6ba87d;
+  --accent-hover: #82b891;
+  --accent-dark: #588f68;
+  --accent-dim: rgba(107, 168, 125, 0.1);
 }
 
-/* Sunset Orange */
+/* Amber Dusk - приглушенный оранжевый */
 body.sunset-theme {
-  --bg-primary: #1a0f08;
-  --bg-secondary: #2d180e;
-  --bg-tertiary: #402114;
-  --bg-elevated: #532a1a;
-  --accent: #f97316;
-  --accent-hover: #ea580c;
-  --accent-dark: #c2410c;
-  --accent-dim: rgba(249, 115, 22, 0.1);
+  --bg-primary: #1a140f;
+  --bg-secondary: #251e16;
+  --bg-tertiary: #30281d;
+  --bg-elevated: #3b3224;
+  --accent: #c89b5f;
+  --accent-hover: #d4ab76;
+  --accent-dark: #b0834d;
+  --accent-dim: rgba(200, 155, 95, 0.1);
 }
 
-/* Crimson Red */
+/* Rose Night - приглушенный красный */
 body.crimson-theme {
-  --bg-primary: #1a0505;
-  --bg-secondary: #2d0a0a;
-  --bg-tertiary: #400e0e;
-  --bg-elevated: #531313;
-  --accent: #ef4444;
-  --accent-hover: #dc2626;
-  --accent-dark: #b91c1c;
-  --accent-dim: rgba(239, 68, 68, 0.1);
+  --bg-primary: #1a0f10;
+  --bg-secondary: #251617;
+  --bg-tertiary: #30201e;
+  --bg-elevated: #3b2925;
+  --accent: #c97a7a;
+  --accent-hover: #d49191;
+  --accent-dark: #b06666;
+  --accent-dim: rgba(201, 122, 122, 0.1);
 }
 
 body {
@@ -148,12 +134,83 @@ body {
   overflow: hidden;
   user-select: none;
   line-height: 1.5;
+  border-radius: 12px;
+  margin: 0;
+}
+
+/* ========================
+   КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ОКНОМ
+   ======================== */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  z-index: 10000;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.titlebar-drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  z-index: 1;
+}
+
+.window-control {
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.window-control:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.window-control.window-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
+.window-control:first-child {
+  border-top-left-radius: 0;
+}
+
+.window-control:last-child {
+  border-top-right-radius: 12px;
 }
 
 /* Основной контейнер */
 .app {
   display: flex;
   height: 100vh;
+  padding-top: 32px;
 }
 
 /* ========================
@@ -177,10 +234,10 @@ body {
 }
 
 .logo-text {
-  font-family: 'Minecraft', monospace;
-  font-size: 20px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
   font-weight: 400;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: var(--accent);
   text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
 }
@@ -204,9 +261,9 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: 'Minecraft', monospace;
+  font-size: 9px;
+  font-weight: 400;
+  font-family: 'Press Start 2P', monospace;
   text-transform: uppercase;
 }
 
@@ -281,9 +338,9 @@ body {
 }
 
 .username {
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 400;
-  font-family: 'Minecraft', monospace;
+  font-family: 'Press Start 2P', monospace;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;

@@ -7,6 +7,29 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Кастомная панель управления окном -->
+  <div class="titlebar">
+    <div class="titlebar-drag-region"></div>
+    <div class="window-controls">
+      <button class="window-control" id="window-minimize" title="Свернуть">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+      <button class="window-control" id="window-maximize" title="Развернуть">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+      <button class="window-control window-close" id="window-close" title="Закрыть">
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1"/>
+          <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <div class="app">
     <!-- Боковая навигация -->
     <aside class="sidebar">
@@ -316,13 +339,13 @@
               <div class="setting-field">
                 <label for="theme-select">Цветовая схема</label>
                 <select id="theme-select">
-                  <option value="dark">🌙 Темная (Классика)</option>
-                  <option value="light">☀️ Светлая</option>
-                  <option value="purple">💜 Purple Dream</option>
-                  <option value="ocean">🌊 Ocean Blue</option>
-                  <option value="forest">🌲 Forest Green</option>
-                  <option value="sunset">🌅 Sunset Orange</option>
-                  <option value="crimson">🔴 Crimson Red</option>
+                  <option value="dark">Темная (Классика)</option>
+                  <option value="light">Светлая</option>
+                  <option value="purple">Midnight Purple</option>
+                  <option value="ocean">Deep Ocean</option>
+                  <option value="forest">Forest Night</option>
+                  <option value="sunset">Amber Dusk</option>
+                  <option value="crimson">Rose Night</option>
                 </select>
               </div>
 
@@ -330,18 +353,17 @@
                 <label for="background-select">Фоновое изображение</label>
                 <select id="background-select">
                   <option value="none">Без фона</option>
-                  <option value="stars">⭐ Звезды</option>
-                  <option value="grid">📐 Сетка</option>
-                  <option value="dots">⚫ Точки</option>
-                  <option value="minecraft">🧱 Minecraft стиль</option>
-                  <option value="custom">🖼️ Свое изображение</option>
+                  <option value="stars">Звезды</option>
+                  <option value="grid">Сетка</option>
+                  <option value="dots">Точки</option>
+                  <option value="minecraft">Minecraft стиль</option>
+                  <option value="custom">Свое изображение</option>
                 </select>
               </div>
 
               <div class="setting-field" id="custom-bg-field" style="display: none;">
-                <label for="custom-bg-input">URL изображения</label>
-                <input type="text" id="custom-bg-input" placeholder="https://example.com/image.jpg">
-                <button class="btn btn-small btn-outline" id="apply-custom-bg" style="margin-top: 8px;">Применить</button>
+                <label for="custom-bg-input">Выбрать файл изображения</label>
+                <input type="file" id="custom-bg-input" accept="image/*">
               </div>
 
               <div class="setting-field">

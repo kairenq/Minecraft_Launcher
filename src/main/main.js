@@ -37,8 +37,9 @@ function createWindow() {
     height: config.windowHeight || 750,
     minWidth: 900,
     minHeight: 600,
-    frame: true,
-    backgroundColor: '#0f0f0f',
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0a0a0a',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -491,6 +492,29 @@ ipcMain.handle('install-modpack', async (event, modpackId) => {
 
     throw new Error(`${userMessage}\n\nТехнические детали: ${error.message}`);
   }
+});
+
+// ===== Управление окном (для frameless окна) =====
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow ? mainWindow.isMaximized() : false;
 });
 
 console.log('Minecraft Launcher started successfully');

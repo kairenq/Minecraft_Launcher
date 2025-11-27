@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadModpacks();
   await loadFavorites();
   await loadSystemInfo();
+  setupWindowControls();
   setupNavigation();
   setupSettings();
   setupSocialLinks();
@@ -519,7 +520,11 @@ function setupSettings() {
 
   // Настройка темы через select
   const themeSelect = document.getElementById('theme-select');
-  themeSelect.value = config.theme || 'dark';
+  const savedTheme = config.theme || 'dark';
+  themeSelect.value = savedTheme;
+
+  // Применяем сохраненную тему при загрузке
+  applyTheme(savedTheme);
 
   themeSelect.addEventListener('change', (e) => {
     const newTheme = e.target.value;
@@ -530,11 +535,17 @@ function setupSettings() {
   const backgroundSelect = document.getElementById('background-select');
   const customBgField = document.getElementById('custom-bg-field');
   const customBgInput = document.getElementById('custom-bg-input');
-  const applyCustomBgBtn = document.getElementById('apply-custom-bg');
 
-  backgroundSelect.value = config.background || 'none';
-  if (config.backgroundImage) {
-    customBgInput.value = config.backgroundImage;
+  // Переменная для хранения текущего фона
+  let currentBgImage = config.backgroundImage || '';
+
+  // Применяем сохраненный фон при загрузке
+  const savedBg = config.background || 'none';
+  backgroundSelect.value = savedBg;
+  applyBackground(savedBg, currentBgImage);
+
+  if (savedBg === 'custom') {
+    customBgField.style.display = 'block';
   }
 
   backgroundSelect.addEventListener('change', (e) => {
@@ -547,10 +558,16 @@ function setupSettings() {
     }
   });
 
-  applyCustomBgBtn.addEventListener('click', () => {
-    const bgUrl = customBgInput.value.trim();
-    if (bgUrl) {
-      applyBackground('custom', bgUrl);
+  // Обработка загрузки файла
+  customBgInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        currentBgImage = event.target.result;
+        applyBackground('custom', currentBgImage);
+      };
+      reader.readAsDataURL(file);
     }
   });
 
@@ -567,7 +584,7 @@ function setupSettings() {
       windowHeight: parseInt(windowSize.value.split('x')[1]),
       theme: themeSelect.value,
       background: backgroundSelect.value,
-      backgroundImage: customBgInput.value.trim()
+      backgroundImage: currentBgImage
     };
 
     try {
@@ -1137,6 +1154,31 @@ function setupCustomization() {
       console.error('Failed to save glassmorphism:', error);
     }
   });
+}
+
+// ===== УПРАВЛЕНИЕ ОКНОМ (FRAMELESS) =====
+function setupWindowControls() {
+  const minimizeBtn = document.getElementById('window-minimize');
+  const maximizeBtn = document.getElementById('window-maximize');
+  const closeBtn = document.getElementById('window-close');
+
+  if (minimizeBtn) {
+    minimizeBtn.addEventListener('click', async () => {
+      await ipcRenderer.invoke('window-minimize');
+    });
+  }
+
+  if (maximizeBtn) {
+    maximizeBtn.addEventListener('click', async () => {
+      await ipcRenderer.invoke('window-maximize');
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', async () => {
+      await ipcRenderer.invoke('window-close');
+    });
+  }
 }
 
 // ===== КЛАВИАТУРНЫЕ СОЧЕТАНИЯ =====

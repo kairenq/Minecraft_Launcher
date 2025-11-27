@@ -5,7 +5,8 @@
   box-sizing: border-box;
 }
 
-/* Minecraft Font Import - использую Google Fonts */
+/* Minecraft Font Import - используем надежные системные шрифты */
+/* Press Start 2P как основной, с fallback на системные моноширинные */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 
@@ -234,12 +235,13 @@ body {
 }
 
 .logo-text {
-  font-family: 'Press Start 2P', monospace;
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 1px;
+  font-family: 'Press Start 2P', 'Courier New', 'Courier', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
   color: var(--accent);
   text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
 }
 
 .sidebar-nav {
@@ -261,10 +263,11 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 9px;
-  font-weight: 400;
-  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'Press Start 2P', 'Courier New', 'Courier', monospace;
   text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .nav-btn:hover {
@@ -338,13 +341,14 @@ body {
 }
 
 .username {
-  font-size: 9px;
-  font-weight: 400;
-  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'Press Start 2P', 'Courier New', 'Courier', monospace;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 1px;
 }
 
 /* ========================
@@ -1875,37 +1879,42 @@ body.glassmorphism-enabled.light-theme .context-menu {
 /* ========================
    ФОНОВЫЕ ИЗОБРАЖЕНИЯ
    ======================== */
-body.bg-none {
+
+/* Фоны применяются только к основному контенту */
+body.bg-none .content {
   background: var(--bg-primary);
 }
 
-body.bg-stars {
+body.bg-stars .content {
   background:
-    radial-gradient(2px 2px at 20px 30px, white, rgba(0,0,0,0)),
-    radial-gradient(2px 2px at 60px 70px, white, rgba(0,0,0,0)),
-    radial-gradient(1px 1px at 50px 50px, white, rgba(0,0,0,0)),
-    radial-gradient(1px 1px at 130px 80px, white, rgba(0,0,0,0)),
-    radial-gradient(2px 2px at 90px 10px, white, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.6), rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 60px 70px, rgba(255,255,255,0.4), rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 50px 50px, rgba(255,255,255,0.5), rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.3), rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 90px 10px, rgba(255,255,255,0.4), rgba(0,0,0,0)),
     var(--bg-primary);
   background-size: 200px 200px;
   background-repeat: repeat;
+  background-attachment: fixed;
 }
 
-body.bg-grid {
+body.bg-grid .content {
   background-image:
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 50px 50px;
   background-color: var(--bg-primary);
+  background-attachment: fixed;
 }
 
-body.bg-dots {
-  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+body.bg-dots .content {
+  background-image: radial-gradient(var(--border) 1.5px, transparent 1.5px);
   background-size: 20px 20px;
   background-color: var(--bg-primary);
+  background-attachment: fixed;
 }
 
-body.bg-minecraft {
+body.bg-minecraft .content {
   background:
     repeating-linear-gradient(
       45deg,
@@ -1914,29 +1923,13 @@ body.bg-minecraft {
       var(--bg-secondary) 10px,
       var(--bg-secondary) 20px
     );
+  background-attachment: fixed;
 }
 
-body.bg-custom {
+body.bg-custom .content {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-attachment: fixed;
-}
-
-/* Overlay для лучшей читаемости с фоном */
-body[class*="bg-"]:not(.bg-none) .content {
-  position: relative;
-}
-
-body[class*="bg-"]:not(.bg-none) .content::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: var(--sidebar-width);
-  right: 0;
-  bottom: 0;
-  background: var(--bg-primary);
-  opacity: 0.85;
-  z-index: -1;
-  pointer-events: none;
+  background-color: var(--bg-primary);
 }

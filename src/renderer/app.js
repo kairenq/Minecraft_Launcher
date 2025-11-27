@@ -1239,11 +1239,14 @@ function applyBackground(bg, customUrl) {
   // Применяем новый фон
   document.body.classList.add(`bg-${bg}`);
 
-  // Если кастомный фон, устанавливаем URL
-  if (bg === 'custom' && customUrl) {
-    document.body.style.backgroundImage = `url(${customUrl})`;
-  } else {
-    document.body.style.backgroundImage = '';
+  // Если кастомный фон, устанавливаем URL для .content
+  const contentElement = document.querySelector('.content');
+  if (contentElement) {
+    if (bg === 'custom' && customUrl) {
+      contentElement.style.backgroundImage = `url(${customUrl})`;
+    } else {
+      contentElement.style.backgroundImage = '';
+    }
   }
 }
 

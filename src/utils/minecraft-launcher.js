@@ -565,7 +565,7 @@ const gameArgs = [
     console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
     // ИСПРАВЛЕННАЯ СТРОКА - используем прямой запуск для Forge
-    const mainClass = versionData.mainClass; // "cpw.mods.bootstraplauncher.BootstrapLauncher"
+    const mainClass = isForge ? "net.minecraft.launchwrapper.Launch" : versionData.mainClass;
     console.log('Main Class:', mainClass);
 
     return {

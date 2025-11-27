@@ -557,10 +557,14 @@ async prepareLaunchArguments(options, logStream) {
     console.log('✓ Минимальные аргументы для BootstrapLauncher');
     console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
+    // ИСПРАВЛЕННАЯ СТРОКА - используем прямой запуск для Forge
+    const mainClass = isForge ? "net.minecraft.client.main.Main" : versionData.mainClass;
+    console.log('Main Class:', mainClass);
+
     return {
         jvmArgs,
         gameArgs,
-        mainClass: versionData.mainClass
+        mainClass: mainClass
     };
 }
 

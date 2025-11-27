@@ -519,122 +519,50 @@ async buildPaths(versionData, osName, versionId) {
   /**
    * Подготовка аргументов запуска
    */
-  async prepareLaunchArguments(options, logStream) {
+async prepareLaunchArguments(options, logStream) {
     const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge } = options;
 
     const uuid = this.generateUUID(username);
 
-    let assetIndexName = versionData.inheritsFrom || versionId.split('-')[0];
-    if (versionData.assetIndex && versionData.assetIndex.id) {
-      assetIndexName = versionData.assetIndex.id;
-    }
+    // МИНИМАЛЬНЫЕ АРГУМЕНТЫ ДЛЯ BOOTSTRAPLAUNCHER
+    const jvmArgs = [
+        `-Xmx${memory}M`,
+        `-Xms${Math.floor(memory / 2)}M`,
+        `-Djava.library.path=${nativesDir}`
+    ];
 
-    const variables = {
-      auth_player_name: username,
-      version_name: versionId,
-      game_directory: gameDir,
-      assets_root: this.assetsDir,
-      assets_index_name: assetIndexName,
-      auth_uuid: uuid,
-      auth_access_token: uuid,
-      clientid: '0',
-      auth_xuid: '0',
-      user_type: 'legacy',
-      version_type: versionData.type || 'release',
-      natives_directory: nativesDir,
-      launcher_name: 'aureate-launcher',
-      launcher_version: '1.0.0',
-      classpath: classpath,
-      modulepath: modulepath,
-      library_directory: this.librariesDir,
-      classpath_separator: process.platform === 'win32' ? ';' : ':'
-    };
-
-const jvmArgs = [
-    `-Xmx${memory}M`,
-    `-Xms${Math.floor(memory / 2)}M`,
-    `-Djava.library.path=${nativesDir}`,
-    `-Dminecraft.launcher.brand=aureate-launcher`,
-    `-Dminecraft.launcher.version=1.0.0`,
-    `-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,${versionId}.jar`,
-    '-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar',
-    `-DlibraryDirectory=${this.librariesDir}`,
-    '-p', modulepath,
-    '--add-modules', 'ALL-MODULE-PATH',
-    '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
-    '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler', 
-    '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
-    '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming',
-    '-cp', classpath
-];
-
-    // КРИТИЧЕСКИ ВАЖНО: Для Forge 1.18+ используем ТОЛЬКО аргументы из версии JSON
-    // и добавляем их в правильном порядке
-    if (versionData.arguments && versionData.arguments.jvm) {
-      console.log('✓ Используем JVM аргументы из версии JSON');
-      
-      // Сначала обрабатываем аргументы из версии JSON
-      const versionJvmArgs = [];
-      this.processVersionJvmArgs(versionData.arguments.jvm, versionJvmArgs, variables, process.platform);
-      
-      // Добавляем аргументы в правильном порядке
-      jvmArgs.push(...versionJvmArgs);
-      
-    } else {
-      // Только для старых версий добавляем natives path
-      jvmArgs.push(`-Djava.library.path=${nativesDir}`);
-    }
-
-    // ДОПОЛНИТЕЛЬНЫЕ АРГУМЕНТЫ ДЛЯ FORGE 1.18+
+    // ТОЛЬКО для Forge добавляем modulepath и критические аргументы
     if (isForge) {
-      console.log('✓ Добавляем специальные аргументы для Forge');
-      
-      // Критически важные аргументы для BootstrapLauncher
-      // Убедимся что они не дублируются с аргументами из версии JSON
-      const criticalArgs = [
-        '--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler',
-        '--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler', 
-        '--add-exports', 'java.base/sun.security.util=cpw.mods.securejarhandler',
-        '--add-exports', 'jdk.naming.dns/com.sun.jndi.dns=java.naming'
-      ];
-      
-      // Добавляем только если их еще нет
-      for (let i = 0; i < criticalArgs.length; i += 2) {
-        const argName = criticalArgs[i];
-        const argValue = criticalArgs[i + 1];
+        jvmArgs.push('-p');
+        jvmArgs.push(modulepath);
+        jvmArgs.push('--add-modules');
+        jvmArgs.push('ALL-MODULE-PATH');
         
-        if (!jvmArgs.includes(argName) || jvmArgs[jvmArgs.indexOf(argName) + 1] !== argValue) {
-          jvmArgs.push(argName);
-          jvmArgs.push(argValue);
-        }
-      }
-      
-      // Для Java 17+ compatibility
-      const java17Args = [
-        '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
-        '--add-opens', 'java.base/java.io=ALL-UNNAMED', 
-        '--add-opens', 'java.base/java.util=ALL-UNNAMED'
-      ];
-      
-      for (let i = 0; i < java17Args.length; i += 2) {
-        const argName = java17Args[i];
-        const argValue = java17Args[i + 1];
-        
-        if (!jvmArgs.includes(argName) || jvmArgs[jvmArgs.indexOf(argName) + 1] !== argValue) {
-          jvmArgs.push(argName);
-          jvmArgs.push(argValue);
-        }
-      }
+        // Только самые критические opens
+        jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
+        jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
     }
 
-    const gameArgs = this.prepareGameArgs(versionData, variables);
+    // Classpath всегда в конце
+    jvmArgs.push('-cp');
+    jvmArgs.push(classpath);
+
+    // Простые game args
+    const gameArgs = [
+        '--gameDir', gameDir,
+        '--width', '854',
+        '--height', '480'
+    ];
+
+    console.log('✓ Минимальные аргументы для BootstrapLauncher');
+    console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
     return {
-      jvmArgs,
-      gameArgs,
-      mainClass: versionData.mainClass
+        jvmArgs,
+        gameArgs,
+        mainClass: versionData.mainClass
     };
-  }
+}
 
   /**
    * Проверка и фильтрация дублирующихся аргументов

@@ -548,11 +548,18 @@ async prepareLaunchArguments(options, logStream) {
     jvmArgs.push(classpath);
 
     // Простые game args
-    const gameArgs = [
-        '--gameDir', gameDir,
-        '--width', '854',
-        '--height', '480'
-    ];
+const gameArgs = [
+    '--gameDir', gameDir,
+    '--username', username,
+    '--version', '1.18.2',
+    '--assetsDir', path.join(this.assetsDir, 'virtual', 'legacy'),
+    '--assetIndex', '1.18',
+    '--uuid', uuid,
+    '--accessToken', uuid,
+    '--userType', 'mojang',
+    '--width', '854',
+    '--height', '480'
+];
 
     console.log('✓ Минимальные аргументы для BootstrapLauncher');
     console.log('JVM Args:', jvmArgs.length, 'аргументов');

@@ -179,7 +179,7 @@ class MinecraftLauncher {
       console.log(`✓ Финальный modulepath: ${modulepath.length} JAR файлов`);
 
       // Подготовка аргументов запуска
-      const { jvmArgs, gameArgs, mainClass } = await this.prepareLaunchArguments({
+      const { jvmArgs, gameArgs, mainClass } = await this.({
         versionData,
         versionId,
         username,
@@ -565,7 +565,7 @@ const gameArgs = [
     console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
     // ИСПРАВЛЕННАЯ СТРОКА - используем прямой запуск для Forge
-    const mainClass = isForge ? "net.minecraft.client.main.Main" : versionData.mainClass;
+    const mainClass = versionData.mainClass; // "cpw.mods.bootstraplauncher.BootstrapLauncher"
     console.log('Main Class:', mainClass);
 
     return {

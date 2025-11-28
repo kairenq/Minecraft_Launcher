@@ -205,6 +205,27 @@ async function openModpackPage(modpack) {
   document.getElementById('modpacks-grid-page').classList.remove('active');
   document.getElementById('modpack-page').classList.add('active');
 
+  // ВАЖНО: Сбрасываем и скрываем прогресс-бар при открытии новой страницы
+  const progressWrapper = document.getElementById('install-progress-wrapper');
+  const progressFill = document.getElementById('install-progress-fill');
+  const progressText = document.getElementById('install-progress-text');
+
+  if (progressWrapper) {
+    progressWrapper.classList.remove('active');
+    progressWrapper.style.display = 'none';
+  }
+  if (progressFill) {
+    progressFill.style.width = '0%';
+  }
+  if (progressText) {
+    progressText.textContent = '';
+  }
+
+  // Сбрасываем состояния стейджей
+  document.querySelectorAll('.stage').forEach(stage => {
+    stage.classList.remove('active', 'completed');
+  });
+
   // Заполняем информацию
   document.getElementById('modpack-title').textContent = modpack.name;
   document.getElementById('modpack-version-tag').textContent = `Minecraft ${modpack.minecraftVersion}`;
@@ -312,6 +333,27 @@ function setupNavigation() {
   document.getElementById('back-to-modpacks').addEventListener('click', () => {
     document.getElementById('modpack-page').classList.remove('active');
     document.getElementById('modpacks-grid-page').classList.add('active');
+
+    // Сбрасываем прогресс-бар при возврате на главную
+    const progressWrapper = document.getElementById('install-progress-wrapper');
+    const progressFill = document.getElementById('install-progress-fill');
+    const progressText = document.getElementById('install-progress-text');
+
+    if (progressWrapper) {
+      progressWrapper.classList.remove('active');
+      progressWrapper.style.display = 'none';
+    }
+    if (progressFill) {
+      progressFill.style.width = '0%';
+    }
+    if (progressText) {
+      progressText.textContent = '';
+    }
+
+    // Сбрасываем состояния стейджей
+    document.querySelectorAll('.stage').forEach(stage => {
+      stage.classList.remove('active', 'completed');
+    });
   });
 
   // Кнопка установки/запуска

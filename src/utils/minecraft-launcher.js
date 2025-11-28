@@ -525,11 +525,14 @@ async prepareLaunchArguments(options, logStream) {
     const uuid = this.generateUUID(username);
 
     // МИНИМАЛЬНЫЕ АРГУМЕНТЫ ДЛЯ BOOTSTRAPLAUNCHER
-    const jvmArgs = [
-        `-Xmx${memory}M`,
-        `-Xms${Math.floor(memory / 2)}M`,
-        `-Djava.library.path=${nativesDir}`
-    ];
+const jvmArgs = [
+    `-Xmx${memory}M`,
+    `-Xms${Math.floor(memory / 2)}M`, 
+    `-Djava.library.path=${nativesDir}`,
+    '-p', modulepath,
+    '--add-modules', 'ALL-MODULE-PATH',
+    '-cp', classpath
+];
 
     // ТОЛЬКО для Forge добавляем modulepath и критические аргументы
     if (isForge) {
@@ -565,7 +568,7 @@ const gameArgs = [
     console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
     // ИСПРАВЛЕННАЯ СТРОКА - используем прямой запуск для Forge
-    const mainClass = isForge ? "net.minecraft.launchwrapper.Launch" : versionData.mainClass;
+    const mainClass = "cpw.mods.bootstraplauncher.BootstrapLauncher";
     console.log('Main Class:', mainClass);
 
     return {

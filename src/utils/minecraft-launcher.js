@@ -535,10 +535,10 @@ async prepareLaunchArguments(options, logStream) {
     ];
 
     // ТОЛЬКО для Forge добавляем КРИТИЧЕСКИЕ opens (если нужно)
-    // if (isForge) {
-    //     jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
-    //     jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
-    // }
+    if (isForge) {
+        jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
+        jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
+    }
 
     // Простые game args
     const gameArgs = [

@@ -525,49 +525,38 @@ async prepareLaunchArguments(options, logStream) {
     const uuid = this.generateUUID(username);
 
     // МИНИМАЛЬНЫЕ АРГУМЕНТЫ ДЛЯ BOOTSTRAPLAUNCHER
-const jvmArgs = [
-    `-Xmx${memory}M`,
-    `-Xms${Math.floor(memory / 2)}M`, 
-    `-Djava.library.path=${nativesDir}`,
-    '-p', modulepath,
-    '--add-modules', 'ALL-MODULE-PATH',
-    '-cp', classpath
-];
+    const jvmArgs = [
+        `-Xmx${memory}M`,
+        `-Xms${Math.floor(memory / 2)}M`, 
+        `-Djava.library.path=${nativesDir}`,
+        '-p', modulepath,
+        '--add-modules', 'ALL-MODULE-PATH',
+        '-cp', classpath
+    ];
 
-    // ТОЛЬКО для Forge добавляем modulepath и критические аргументы
-    if (isForge) {
-        jvmArgs.push('-p');
-        jvmArgs.push(modulepath);
-        jvmArgs.push('--add-modules');
-        jvmArgs.push('ALL-MODULE-PATH');
-        
-        // Только самые критические opens
-        jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
-        jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
-    }
-
-    // Classpath всегда в конце
-    jvmArgs.push('-cp');
-    jvmArgs.push(classpath);
+    // ТОЛЬКО для Forge добавляем КРИТИЧЕСКИЕ opens (если нужно)
+    // if (isForge) {
+    //     jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
+    //     jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
+    // }
 
     // Простые game args
-const gameArgs = [
-    '--gameDir', gameDir,
-    '--username', username,
-    '--version', '1.18.2',
-    '--assetsDir', path.join(this.assetsDir, 'virtual', 'legacy'),
-    '--assetIndex', '1.18',
-    '--uuid', uuid,
-    '--accessToken', uuid,
-    '--userType', 'mojang',
-    '--width', '854',
-    '--height', '480'
-];
+    const gameArgs = [
+        '--gameDir', gameDir,
+        '--username', username,
+        '--version', '1.18.2',
+        '--assetsDir', path.join(this.assetsDir, 'virtual', 'legacy'),
+        '--assetIndex', '1.18',
+        '--uuid', uuid,
+        '--accessToken', uuid,
+        '--userType', 'mojang',
+        '--width', '854',
+        '--height', '480'
+    ];
 
     console.log('✓ Минимальные аргументы для BootstrapLauncher');
     console.log('JVM Args:', jvmArgs.length, 'аргументов');
 
-    // ИСПРАВЛЕННАЯ СТРОКА - используем прямой запуск для Forge
     const mainClass = "cpw.mods.bootstraplauncher.BootstrapLauncher";
     console.log('Main Class:', mainClass);
 
@@ -577,7 +566,6 @@ const gameArgs = [
         mainClass: mainClass
     };
 }
-
   /**
    * Проверка и фильтрация дублирующихся аргументов
    */

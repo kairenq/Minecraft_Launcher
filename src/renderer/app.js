@@ -535,25 +535,73 @@ function setupSettings() {
   const backgroundSelect = document.getElementById('background-select');
   const customBgField = document.getElementById('custom-bg-field');
   const customBgInput = document.getElementById('custom-bg-input');
+  const customBgNameWrapper = document.getElementById('custom-bg-name-wrapper');
+  const customBgName = document.getElementById('custom-bg-name');
+  const saveCustomBgBtn = document.getElementById('save-custom-bg');
+  const fileInputText = document.getElementById('file-input-text');
 
   // Переменная для хранения текущего фона
   let currentBgImage = config.backgroundImage || '';
+  let pendingCustomBg = null; // Временное хранилище для нового фона
+
+  // Загружаем сохраненные кастомные фоны
+  const savedCustomBackgrounds = config.customBackgrounds || [];
+
+  // Добавляем сохраненные фоны в select
+  function loadCustomBackgrounds() {
+    // Удаляем старые кастомные опции
+    const existingCustomOptions = backgroundSelect.querySelectorAll('option[data-custom="true"]');
+    existingCustomOptions.forEach(opt => opt.remove());
+
+    // Добавляем новые
+    savedCustomBackgrounds.forEach((bg, index) => {
+      const option = document.createElement('option');
+      option.value = `custom-${index}`;
+      option.textContent = bg.name;
+      option.setAttribute('data-custom', 'true');
+      option.setAttribute('data-image', bg.image);
+      backgroundSelect.insertBefore(option, backgroundSelect.querySelector('option[value="custom"]'));
+    });
+  }
+
+  loadCustomBackgrounds();
 
   // Применяем сохраненный фон при загрузке
   const savedBg = config.background || 'none';
   backgroundSelect.value = savedBg;
-  applyBackground(savedBg, currentBgImage);
 
-  if (savedBg === 'custom') {
+  // Если это кастомный фон из списка
+  if (savedBg && savedBg.startsWith('custom-')) {
+    const index = parseInt(savedBg.split('-')[1]);
+    if (savedCustomBackgrounds[index]) {
+      applyBackground('custom', savedCustomBackgrounds[index].image);
+    }
+  } else if (savedBg === 'custom') {
+    applyBackground('custom', currentBgImage);
     customBgField.style.display = 'block';
+  } else {
+    applyBackground(savedBg, null);
   }
 
   backgroundSelect.addEventListener('change', (e) => {
     const bg = e.target.value;
+
     if (bg === 'custom') {
+      // Режим загрузки нового фона
       customBgField.style.display = 'block';
-    } else {
+      customBgNameWrapper.style.display = 'none';
+      pendingCustomBg = null;
+    } else if (bg.startsWith('custom-')) {
+      // Выбран сохраненный кастомный фон
+      const index = parseInt(bg.split('-')[1]);
+      if (savedCustomBackgrounds[index]) {
+        applyBackground('custom', savedCustomBackgrounds[index].image);
+      }
       customBgField.style.display = 'none';
+    } else {
+      // Стандартный фон
+      customBgField.style.display = 'none';
+      customBgNameWrapper.style.display = 'none';
       applyBackground(bg, null);
     }
   });
@@ -564,10 +612,57 @@ function setupSettings() {
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        currentBgImage = event.target.result;
-        applyBackground('custom', currentBgImage);
+        pendingCustomBg = event.target.result;
+        applyBackground('custom', pendingCustomBg);
+        customBgNameWrapper.style.display = 'flex';
+        fileInputText.textContent = file.name;
+        customBgName.focus();
       };
       reader.readAsDataURL(file);
+    }
+  });
+
+  // Сохранение кастомного фона
+  saveCustomBgBtn.addEventListener('click', async () => {
+    if (!pendingCustomBg) return;
+
+    const name = customBgName.value.trim() || `Фон ${savedCustomBackgrounds.length + 1}`;
+
+    // Добавляем в список
+    savedCustomBackgrounds.push({
+      name: name,
+      image: pendingCustomBg
+    });
+
+    // Сохраняем в конфиг
+    const updatedConfig = {
+      ...config,
+      customBackgrounds: savedCustomBackgrounds,
+      background: `custom-${savedCustomBackgrounds.length - 1}`,
+      backgroundImage: pendingCustomBg
+    };
+
+    try {
+      await ipcRenderer.invoke('save-config', updatedConfig);
+      config = updatedConfig;
+
+      // Обновляем список
+      loadCustomBackgrounds();
+
+      // Устанавливаем новый фон как выбранный
+      backgroundSelect.value = `custom-${savedCustomBackgrounds.length - 1}`;
+
+      // Скрываем поле
+      customBgNameWrapper.style.display = 'none';
+      customBgField.style.display = 'none';
+      customBgName.value = '';
+      fileInputText.textContent = 'Выбрать изображение';
+      pendingCustomBg = null;
+
+      showNotification(`Фон "${name}" сохранен!`);
+    } catch (error) {
+      console.error('Failed to save custom background:', error);
+      showNotification('Ошибка сохранения фона', 'error');
     }
   });
 
@@ -576,6 +671,17 @@ function setupSettings() {
   });
 
   document.getElementById('save-settings-btn').addEventListener('click', async () => {
+    // Определяем backgroundImage в зависимости от выбранного фона
+    let bgImage = currentBgImage;
+    const selectedBg = backgroundSelect.value;
+
+    if (selectedBg.startsWith('custom-')) {
+      const index = parseInt(selectedBg.split('-')[1]);
+      if (savedCustomBackgrounds[index]) {
+        bgImage = savedCustomBackgrounds[index].image;
+      }
+    }
+
     const newConfig = {
       ...config,
       username: usernameInput.value,
@@ -583,8 +689,9 @@ function setupSettings() {
       windowWidth: parseInt(windowSize.value.split('x')[0]),
       windowHeight: parseInt(windowSize.value.split('x')[1]),
       theme: themeSelect.value,
-      background: backgroundSelect.value,
-      backgroundImage: currentBgImage
+      background: selectedBg,
+      backgroundImage: bgImage,
+      customBackgrounds: savedCustomBackgrounds
     };
 
     try {

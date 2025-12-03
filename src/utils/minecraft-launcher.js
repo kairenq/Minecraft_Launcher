@@ -1,4 +1,3 @@
-вадя, [03.12.2025 22:16]
 const { spawn } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
@@ -100,10 +99,7 @@ class MinecraftLauncher {
         }
       }
 
-      console.log('DEBU
-
-вадя, [03.12.2025 22:16]
-G: Финальный versionId:', versionId);
+      console.log('DEBUG: Финальный versionId:', versionId);
       logStream.write(`\n[LAUNCH] Final versionId: ${versionId}\n`);
       logStream.write(`[LAUNCH] modLoader: ${modLoader}\n`);
       logStream.write(`[LAUNCH] version: ${version}\n`);
@@ -186,7 +182,6 @@ G: Финальный versionId:', versionId);
       const missingClasspath = await this.validateFiles(classpath, logStream, 'CLASSPATH');
       const missingModulepath = await this.validateFiles(modulepath, logStream, 'MODULEPATH');
 
-вадя, [03.12.2025 22:16]
 if (missingClasspath.length > 0 || missingModulepath.length > 0) {
         console.error('Отсутствующие файлы в classpath:', missingClasspath);
         console.error('Отсутствующие файлы в modulepath:', missingModulepath);
@@ -290,7 +285,6 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
         console.warn(⚠️ Базовый клиент не найден: ${baseVersionJar});
       }
 
-вадя, [03.12.2025 22:16]
 // Forge/Fabric JAR (версия модлоадера)
       const modLoaderJar = path.join(this.versionsDir, versionId, ${versionId}.jar);
       if (fs.existsSync(modLoaderJar)) {
@@ -428,7 +422,6 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     return missingFiles;
   }
 
-вадя, [03.12.2025 22:16]
 /
    * Извлечение нативных библиотек
    */
@@ -494,7 +487,6 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
                 continue;
               }
 
-вадя, [03.12.2025 22:16]
 const hasValidExtension = nativeExtensions.some(ext => 
                 entryName.toLowerCase().endsWith(ext)
               );
@@ -600,7 +592,6 @@ const hasValidExtension = nativeExtensions.some(ext =>
     jvmArgs.push('-cp');
     jvmArgs.push(classpath);
 
-вадя, [03.12.2025 22:16]
 // Подготовка игровых аргументов
     const gameArgs = this.prepareGameArgs(versionData, {
         auth_player_name: username,
@@ -724,7 +715,6 @@ const hasValidExtension = nativeExtensions.some(ext =>
     return gameArgs;
   }
 
-вадя, [03.12.2025 22:16]
 /**
    * Замена переменных в строках
    */

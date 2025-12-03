@@ -14,10 +14,10 @@ class MinecraftLauncher {
 
   generateUUID(username) {
     const hash = crypto.createHash('md5').update(username).digest('hex');
-    return ${hash.substr(0, 8)}-${hash.substr(8, 4)}-${hash.substr(12, 4)}-${hash.substr(16, 4)}-${hash.substr(20, 12)};
+    return `${hash.substr(0, 8)}-${hash.substr(8, 4)}-${hash.substr(12, 4)}-${hash.substr(16, 4)}-${hash.substr(20, 12)}`;
   }
 
-  /
+  /**
    * Основной метод запуска - поддерживает все типы модлоадеров
    */
   async launch(options, callback) {
@@ -182,7 +182,7 @@ class MinecraftLauncher {
       const missingClasspath = await this.validateFiles(classpath, logStream, 'CLASSPATH');
       const missingModulepath = await this.validateFiles(modulepath, logStream, 'MODULEPATH');
 
-if (missingClasspath.length > 0 || missingModulepath.length > 0) {
+      if (missingClasspath.length > 0 || missingModulepath.length > 0) {
         console.error('Отсутствующие файлы в classpath:', missingClasspath);
         console.error('Отсутствующие файлы в modulepath:', missingModulepath);
         throw new Error(`Отсутствуют файлы библиотек. Попробуйте переустановить версию.`);
@@ -261,44 +261,44 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     }
   }
 
-  /
+  /**
    * Построение classpath и modulepath из библиотек версии
    */
   async buildPaths(versionData, osName, versionId, isForge) {
     const classpath = [];
     const modulepath = [];
 
-    console.log([DEBUG] Building paths for version: ${versionId});
-    console.log([DEBUG] Inherits from: ${versionData.inheritsFrom});
-    console.log([DEBUG] Is Forge: ${isForge});
+    console.log(`[DEBUG] Building paths for version: ${versionId}`);
+    console.log(`[DEBUG] Inherits from: ${versionData.inheritsFrom}`);
+    console.log(`[DEBUG] Is Forge: ${isForge}`);
 
     // КРИТИЧЕСКИ ВАЖНО: Для наследуемых версий (Forge/Fabric) добавляем оба JAR
     if (versionData.inheritsFrom) {
       const baseVersion = versionData.inheritsFrom;
       
       // Базовый Minecraft JAR
-      const baseVersionJar = path.join(this.versionsDir, baseVersion, ${baseVersion}.jar);
+      const baseVersionJar = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
       if (fs.existsSync(baseVersionJar)) {
         classpath.push(baseVersionJar);
-        console.log(✓ Добавлен базовый клиент: ${baseVersion}.jar);
+        console.log(`✓ Добавлен базовый клиент: ${baseVersion}.jar`);
       } else {
-        console.warn(⚠️ Базовый клиент не найден: ${baseVersionJar});
+        console.warn(`⚠️ Базовый клиент не найден: ${baseVersionJar}`);
       }
 
-// Forge/Fabric JAR (версия модлоадера)
-      const modLoaderJar = path.join(this.versionsDir, versionId, ${versionId}.jar);
+      // Forge/Fabric JAR (версия модлоадера)
+      const modLoaderJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
       if (fs.existsSync(modLoaderJar)) {
         classpath.push(modLoaderJar);
-        console.log(✓ Добавлен модлоадер клиент: ${versionId}.jar);
+        console.log(`✓ Добавлен модлоадер клиент: ${versionId}.jar`);
       } else {
-        console.log(ℹ️ Модлоадер JAR не найден (может быть нормально для некоторых версий): ${modLoaderJar});
+        console.log(`ℹ️ Модлоадер JAR не найден (может быть нормально для некоторых версий): ${modLoaderJar}`);
       }
     } else {
       // Для ванильных версий
-      const versionJar = path.join(this.versionsDir, versionId, ${versionId}.jar);
+      const versionJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
       if (fs.existsSync(versionJar)) {
         classpath.push(versionJar);
-        console.log(✓ Добавлен ванильный клиент: ${versionId}.jar);
+        console.log(`✓ Добавлен ванильный клиент: ${versionId}.jar`);
       }
     }
 
@@ -309,11 +309,11 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
         allowed = false;
         for (const rule of lib.rules) {
           if (rule.action === 'allow') {
-            if (!rule.os  this.checkOsRule(rule.os, osName)) {
+            if (!rule.os || this.checkOsRule(rule.os, osName)) {
               allowed = true;
             }
           } else if (rule.action === 'disallow') {
-            if (!rule.os  this.checkOsRule(rule.os, osName)) {
+            if (!rule.os || this.checkOsRule(rule.os, osName)) {
               allowed = false;
             }
           }
@@ -331,7 +331,7 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
           if (parts.length >= 3) {
             const [group, artifact, version] = parts;
             const groupPath = group.replace(/\./g, '/');
-            const fileName = ${artifact}-${version}.jar;
+            const fileName = `${artifact}-${version}.jar`;
             libPath = path.join(this.librariesDir, groupPath, artifact, version, fileName);
           }
         }
@@ -347,18 +347,18 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
             }
           }
         } else if (libPath) {
-          console.warn(⚠️ Библиотека не найдена: ${libPath});
+          console.warn(`⚠️ Библиотека не найдена: ${libPath}`);
         }
       }
     }
 
-    console.log([CLASSPATH] Итоговый classpath: ${classpath.length} файлов);
-    console.log([MODULEPATH] Итоговый modulepath: ${modulepath.length} файлов);
+    console.log(`[CLASSPATH] Итоговый classpath: ${classpath.length} файлов`);
+    console.log(`[MODULEPATH] Итоговый modulepath: ${modulepath.length} файлов`);
     
     return { classpath, modulepath };
   }
 
-  /
+  /**
    * Проверяем, является ли библиотека модулем (должна быть в modulepath)
    */
   isModuleLibrary(libName) {
@@ -381,7 +381,7 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     return moduleLibraries.some(moduleLib => libName.includes(moduleLib));
   }
 
-  /
+  /**
    * Проверка правил ОС для библиотек
    */
   checkOsRule(osRule, osName) {
@@ -399,7 +399,7 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     return true;
   }
 
-  /
+  /**
    * Валидация файлов
    */
   async validateFiles(files, logStream, type) {
@@ -422,7 +422,7 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     return missingFiles;
   }
 
-/
+  /**
    * Извлечение нативных библиотек
    */
   async extractNatives(versionData, nativesDir, logStream) {
@@ -450,13 +450,13 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
     };
 
     const allNativeJars = findNativeJars(this.librariesDir);
-    console.log(Найдено JAR файлов с natives: ${allNativeJars.length});
+    console.log(`Найдено JAR файлов с natives: ${allNativeJars.length}`);
 
     const platformSuffix = process.platform === 'win32' ? 'windows' :
                           process.platform === 'darwin' ? 'macos' : 'linux';
 
     let nativeJarsForPlatform = allNativeJars.filter(jar => 
-      path.basename(jar).includes(-natives-${platformSuffix})
+      path.basename(jar).includes(`-natives-${platformSuffix}`)
     );
 
     if (nativeJarsForPlatform.length === 0) {
@@ -465,7 +465,7 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
 
     for (const nativePath of nativeJarsForPlatform) {
       const baseName = path.basename(nativePath);
-      logStream.write([NATIVES] Extracting: ${baseName}\n);
+      logStream.write(`[NATIVES] Extracting: ${baseName}\n`);
 
       try {
         const StreamZip = require('node-stream-zip');
@@ -483,11 +483,11 @@ if (missingClasspath.length > 0 || missingModulepath.length > 0) {
             for (const entryName in entries) {
               const entry = entries[entryName];
 
-              if (entry.isDirectory  entryName.startsWith('META-INF/')) {
+              if (entry.isDirectory || entryName.startsWith('META-INF/')) {
                 continue;
               }
 
-const hasValidExtension = nativeExtensions.some(ext => 
+              const hasValidExtension = nativeExtensions.some(ext => 
                 entryName.toLowerCase().endsWith(ext)
               );
               
@@ -545,66 +545,66 @@ const hasValidExtension = nativeExtensions.some(ext =>
    * Подготовка аргументов запуска
    */
   async prepareLaunchArguments(options, logStream) {
-    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge, isFabric } = options;
+    const { versionData, versionId, username, memory, gameDir, nativesDir, classpath, modulepath, isForge, isFabric, libraries } = options;
 
     const uuid = this.generateUUID(username);
 
     // Базовые JVM аргументы
     const jvmArgs = [
-        `-Xmx${memory}M`,
-        `-Xms${Math.floor(memory / 2)}M`,
-        `-Djava.library.path=${nativesDir}`,
-        '-Dfabric.gameJarPath=' + path.join(this.versionsDir, versionData.inheritsFrom  versionId, ${versionData.inheritsFrom || versionId}.jar)
+      `-Xmx${memory}M`,
+      `-Xms${Math.floor(memory / 2)}M`,
+      `-Djava.library.path=${nativesDir}`,
+      `-Dfabric.gameJarPath=${path.join(this.versionsDir, versionData.inheritsFrom || versionId, `${versionData.inheritsFrom || versionId}.jar`)}`
     ];
 
     // Для Forge добавляем modulepath и критические аргументы
     if (isForge) {
-        jvmArgs.push('-p');
-        jvmArgs.push(modulepath);
-        jvmArgs.push('--add-modules');
-        jvmArgs.push('ALL-MODULE-PATH');
-        
-        // Критические opens для Forge
-        jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
-        jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
-        jvmArgs.push('--add-opens', 'java.base/java.lang=ALL-UNNAMED');
-        jvmArgs.push('--add-opens', 'java.base/java.io=ALL-UNNAMED');
-        
-        console.log('=== FORGE DEBUG INFO ===');
-        console.log('Forge Version ID:', versionId);
-        console.log('Main Class from JSON:', versionData.mainClass);
-        console.log('Inherits From:', versionData.inheritsFrom);
-        
-        // Проверяем наличие критических библиотек Forge
-        const criticalLibs = ['fmlcore', 'fmlloader', 'javafmllanguage', 'mclanguage', 'lowcodelanguage'];
-        criticalLibs.forEach(lib => {
-            const hasLib = options.libraries.some(l => l.includes(lib));
-            console.log(Has ${lib}:, hasLib);
-        });
+      jvmArgs.push('-p');
+      jvmArgs.push(modulepath);
+      jvmArgs.push('--add-modules');
+      jvmArgs.push('ALL-MODULE-PATH');
+      
+      // Критические opens для Forge
+      jvmArgs.push('--add-opens', 'java.base/java.util.jar=cpw.mods.securejarhandler');
+      jvmArgs.push('--add-opens', 'java.base/java.lang.invoke=cpw.mods.securejarhandler');
+      jvmArgs.push('--add-opens', 'java.base/java.lang=ALL-UNNAMED');
+      jvmArgs.push('--add-opens', 'java.base/java.io=ALL-UNNAMED');
+      
+      console.log('=== FORGE DEBUG INFO ===');
+      console.log('Forge Version ID:', versionId);
+      console.log('Main Class from JSON:', versionData.mainClass);
+      console.log('Inherits From:', versionData.inheritsFrom);
+      
+      // Проверяем наличие критических библиотек Forge
+      const criticalLibs = ['fmlcore', 'fmlloader', 'javafmllanguage', 'mclanguage', 'lowcodelanguage'];
+      criticalLibs.forEach(lib => {
+        const hasLib = libraries.some(l => l.includes(lib));
+        console.log(`Has ${lib}:`, hasLib);
+      });
     }
 
     // Для Fabric добавляем специфичные аргументы
     if (isFabric) {
-        jvmArgs.push('-Dfabric.gameJarPath=' + path.join(this.versionsDir, versionData.inheritsFrom, ${versionData.inheritsFrom}.jar));
+      jvmArgs.push(`-Dfabric.gameJarPath=${path.join(this.versionsDir, versionData.inheritsFrom, `${versionData.inheritsFrom}.jar`)}`);
     }
 
     // Classpath всегда в конце
     jvmArgs.push('-cp');
     jvmArgs.push(classpath);
 
-// Подготовка игровых аргументов
+    // Подготовка игровых аргументов
     const gameArgs = this.prepareGameArgs(versionData, {
-        auth_player_name: username,
-        version_name: versionData.id || versionId,
-        game_directory: gameDir,
-        assets_root: path.join(this.assetsDir, 'virtual', 'legacy'),
-        assets_index_name: versionData.assets  '1.18',
-        auth_uuid: uuid,
-        auth_access_token: uuid,
-        user_type: 'mojang',
-        version_type: versionData.type  'release',
-        resolution_width: '854',
-        resolution_height: '480'
+      auth_player_name: username,
+      version_name: versionData.id || versionId,
+      game_directory: gameDir,
+      assets_root: path.join(this.assetsDir, 'virtual', 'legacy'),
+      assets_index_name: versionData.assets || '1.18',
+      auth_uuid: uuid,
+      auth_access_token: uuid,
+      user_type: 'mojang',
+      version_type: versionData.type || 'release',
+      resolution_width: '854',
+      resolution_height: '480'
     });
 
     console.log('✓ Подготовка аргументов запуска');
@@ -615,13 +615,13 @@ const hasValidExtension = nativeExtensions.some(ext =>
     console.log('Main Class:', mainClass);
 
     return {
-        jvmArgs,
-        gameArgs,
-        mainClass: mainClass
+      jvmArgs,
+      gameArgs,
+      mainClass: mainClass
     };
   }
 
-  /
+  /**
    * Проверка и фильтрация дублирующихся аргументов
    */
   filterDuplicateJvmArgs(jvmArgs) {
@@ -652,7 +652,7 @@ const hasValidExtension = nativeExtensions.some(ext =>
     return filteredArgs;
   }
 
-  /
+  /**
    * Подготовка игровых аргументов
    */
   prepareGameArgs(versionData, variables) {
@@ -671,7 +671,7 @@ const hasValidExtension = nativeExtensions.some(ext =>
           let allowed = false;
           for (const rule of arg.rules) {
             if (rule.action === 'allow') {
-              if (!rule.os  this.checkOsRule(rule.os, process.platform)) {
+              if (!rule.os || this.checkOsRule(rule.os, process.platform)) {
                 allowed = true;
               }
             }
@@ -715,12 +715,12 @@ const hasValidExtension = nativeExtensions.some(ext =>
     return gameArgs;
   }
 
-/**
+  /**
    * Замена переменных в строках
    */
   replaceVariables(str, variables) {
     return str.replace(/\$\{([^}]+)\}/g, (match, key) => {
-      return variables[key]  match;
+      return variables[key] || match;
     });
   }
 
@@ -795,15 +795,15 @@ pause >nul
 
     gameProcess.on('close', (code) => {
       const runTime = Date.now() - startTime;
-      const endMsg = \n[ЗАВЕРШЕНИЕ] Код выхода: ${code}, Время работы: ${runTime}ms\n;
+      const endMsg = `\n[ЗАВЕРШЕНИЕ] Код выхода: ${code}, Время работы: ${runTime}ms\n`;
 
       logStream.write(endMsg);
       logStream.end();
 
       if (code === 0) {
-        console.log(✓ Minecraft завершён успешно (работал ${(runTime/1000).toFixed(1)}с));
+        console.log(`✓ Minecraft завершён успешно (работал ${(runTime/1000).toFixed(1)}с)`);
       } else {
-        console.log(✗ Minecraft завершён с кодом ${code} (работал ${(runTime/1000).toFixed(1)}с));
+        console.log(`✗ Minecraft завершён с кодом ${code} (работал ${(runTime/1000).toFixed(1)}с)`);
         console.log('Проверьте логи:', logFile);
       }
     });

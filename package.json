@@ -4,64 +4,76 @@
   "description": "Minecraft Launcher with C++ backend",
   "main": "src/ui/main.js",
   "scripts": {
-    "start": "cd src/ui && electron .",
-    "dev": "cd src/ui && electron . --enable-logging",
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
     "build": "electron-builder",
     "build:windows": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:mac": "electron-builder --mac",
-    "build-addon": "cd src/core && node-gyp configure build",
-    "rebuild-addon": "cd src/core && node-gyp rebuild",
-    "clean-addon": "cd src/core && node-gyp clean",
-    "install-all": "npm install && cd src/ui && npm install && cd ../bridge && npm install",
-    "postinstall": "echo \"Skipping native module build for CI\"",
+    "install-all": "npm install && cd src/ui && npm install",
+    "postinstall": "echo \"Native module build skipped for CI\"",
     "test": "echo \"No tests specified\" && exit 0"
   },
   "author": "Aureate Launcher Team",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^25.0.0",
-    "electron-builder": "^24.0.0",
-    "node-gyp": "^9.4.1"
+    "electron": "^28.1.0",
+    "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "fs-extra": "^11.1.1",
-    "node-addon-api": "^6.1.0",
+    "fs-extra": "^11.2.0",
     "extract-zip": "^2.0.1"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
+    "node": ">=18.0.0"
   },
   "build": {
     "appId": "com.aureate.launcher",
     "productName": "Aureate Launcher",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "src/ui/assets"
     },
     "files": [
-      "src/**/*",
+      "src/ui/**/*",
+      "src/bridge/**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",
       "!**/*.map",
-      "!src/core/build"
+      "!src/core",
+      "!**/*.o",
+      "!**/*.obj"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "src/ui/assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "src/ui/assets/icon.ico",
+      "publisherName": "Aureate"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "src/ui/assets/icon.png"
+      "target": ["AppImage", "deb"],
+      "icon": "src/ui/assets",
+      "category": "Game"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "src/ui/assets/icon.icns"
+      "target": ["dmg", "zip"],
+      "icon": "src/ui/assets/icon.icns",
+      "category": "public.app-category.games",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     }
   }
 }

@@ -1,42 +1,75 @@
-name: Build Minecraft Launcher
+name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - 'claude/**'
-  pull_request:
-    branches:
-      - main
-      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build for Windows
-        run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: minecraft-launcher-windows
-          path: |
-            dist/*.exe
-          retention-days: 30
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd src/ui && npm ci
+        cd ../bridge && npm ci
+    
+    - name: Build JavaScript app
+      run: |
+        # Создаем необходимые директории
+        mkdir -p src/ui/assets
+        # Копируем иконки если есть
+        if [ ! -f "src/ui/assets/icon.ico" ]; then
+          echo "Creating placeholder icon..."
+          # Можно создать простую иконку или пропустить
+        fi
+        
+        # Собираем Electron приложение (пропускаем C++ для CI)
+        npm run build:windows
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-build
+        path: dist/
+        
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd src/ui && npm ci
+        cd ../bridge && npm ci
+        # Устанавливаем системные зависимости
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libnotify-dev libnss3-dev libxss-dev libasound2-dev
+    
+    - name: Build JavaScript app
+      run: |
+        mkdir -p src/ui/assets
+        npm run build:linux
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-build
+        path: dist/

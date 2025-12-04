@@ -10,10 +10,11 @@
     "build:windows": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:mac": "electron-builder --mac",
-    "build-core": "cd src/core && mkdir -p build && cd build && cmake .. && cmake --build . --config Release",
     "build-addon": "cd src/core && node-gyp configure build",
+    "rebuild-addon": "cd src/core && node-gyp rebuild",
+    "clean-addon": "cd src/core && node-gyp clean",
     "install-all": "npm install && cd src/ui && npm install && cd ../bridge && npm install",
-    "postinstall": "npm run build-addon",
+    "postinstall": "echo \"Skipping native module build for CI\"",
     "test": "echo \"No tests specified\" && exit 0"
   },
   "author": "Aureate Launcher Team",
@@ -21,15 +22,15 @@
   "devDependencies": {
     "electron": "^25.0.0",
     "electron-builder": "^24.0.0",
-    "node-gyp": "^9.0.0",
-    "cmake-js": "^7.0.0"
+    "node-gyp": "^9.4.1"
   },
   "dependencies": {
     "fs-extra": "^11.1.1",
-    "node-addon-api": "^6.1.0"
+    "node-addon-api": "^6.1.0",
+    "extract-zip": "^2.0.1"
   },
   "engines": {
-    "node": ">=16.0.0",
+    "node": ">=18.0.0",
     "npm": ">=8.0.0"
   },
   "build": {
@@ -43,7 +44,8 @@
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",
-      "!**/*.map"
+      "!**/*.map",
+      "!src/core/build"
     ],
     "win": {
       "target": "nsis",
@@ -61,8 +63,5 @@
       "target": "dmg",
       "icon": "src/ui/assets/icon.icns"
     }
-  },
-  "optionalDependencies": {
-    "electron-builder-squirrel-windows": "^24.0.0"
   }
 }

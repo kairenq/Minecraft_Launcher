@@ -1,42 +1,199 @@
-name: Build Minecraft Launcher
+name: Build and Release
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - 'claude/**'
+    branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [ main, master ]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '18.x'
 
 jobs:
   build-windows:
     runs-on: windows-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+    - name: Setup Node.js ${{ env.NODE_VERSION }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          package-lock.json
+          src/ui/package-lock.json
+          src/bridge/package-lock.json
 
-      - name: Install dependencies
-        run: npm install
+    - name: Ensure package-lock.json exists
+      shell: pwsh
+      run: |
+        # Create package-lock.json if missing
+        if (-not (Test-Path "package-lock.json")) {
+          Write-Host "Creating package-lock.json..."
+          npm init -y
+          npm install --package-lock-only
+        }
+        
+        # Create for src/ui
+        if (-not (Test-Path "src/ui/package-lock.json")) {
+          Write-Host "Creating src/ui/package-lock.json..."
+          Push-Location "src/ui"
+          npm init -y
+          npm install --package-lock-only
+          Pop-Location
+        }
+        
+        # Create for src/bridge  
+        if (-not (Test-Path "src/bridge/package-lock.json")) {
+          Write-Host "Creating src/bridge/package-lock.json..."
+          Push-Location "src/bridge"
+          npm init -y
+          npm install --package-lock-only
+          Pop-Location
+        }
 
-      - name: Build for Windows
-        run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Install root dependencies
+      run: npm ci --no-audit --prefer-offline
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: minecraft-launcher-windows
-          path: |
-            dist/*.exe
-          retention-days: 30
+    - name: Install UI dependencies
+      run: |
+        cd src/ui
+        npm ci --no-audit --prefer-offline
+
+    - name: Install bridge dependencies
+      run: |
+        cd src/bridge
+        npm ci --no-audit --prefer-offline
+
+    - name: Verify icon.ico exists
+      shell: pwsh
+      run: |
+        $iconPath = "src/ui/assets/icon.ico"
+        if (Test-Path $iconPath) {
+          Write-Host "✅ Icon found: $iconPath"
+          $fileInfo = Get-Item $iconPath
+          Write-Host "Icon size: $($fileInfo.Length) bytes"
+        } else {
+          Write-Warning "⚠️ Icon not found: $iconPath"
+          Write-Host "Creating placeholder icon for build..."
+          # Create minimal ICO file as fallback
+          $icoData = [byte[]]@(
+            0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x20, 0x20,
+            0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0xA8, 0x10,
+            0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00,
+            0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x40, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+          )
+          New-Item -Path $iconPath -ItemType File -Force | Out-Null
+          [System.IO.File]::WriteAllBytes($iconPath, $icoData)
+          Write-Host "Placeholder icon created"
+        }
+
+    - name: Build Windows executable
+      run: npm run build:windows
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CI: true
+        ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+
+    - name: List build artifacts
+      shell: pwsh
+      run: |
+        Write-Host "Build artifacts in dist/:"
+        if (Test-Path "dist") {
+          Get-ChildItem -Path "dist" -Recurse -File | ForEach-Object {
+            Write-Host "  $($_.FullName.Substring($pwd.Path.Length + 1)) - $($_.Length) bytes"
+          }
+        } else {
+          Write-Error "dist directory not found!"
+        }
+
+    - name: Upload Windows Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: aureate-launcher-windows-${{ github.sha }}
+        path: |
+          dist/*.exe
+          dist/*.msi
+          dist/*.nsis.exe
+          dist/*.zip
+        if-no-files-found: error
+        retention-days: 90
+
+  create-release:
+    needs: build-windows
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: aureate-launcher-windows-${{ github.sha }}
+        path: artifacts/
+
+    - name: Display artifact info
+      shell: pwsh
+      run: |
+        Write-Host "Artifacts to release:"
+        Get-ChildItem -Path "artifacts" -Recurse -File | ForEach-Object {
+          Write-Host "  $($_.Name) - $([math]::Round($_.Length / 1MB, 2)) MB"
+        }
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        body: |
+          # 🎮 Aureate Minecraft Launcher
+          
+          ## 📦 Что нового
+          - Полная поддержка Minecraft с модами
+          - Установка сборок Draconica и Skydustry
+          - Автоматическая загрузка Java
+          - Современный интерфейс
+          
+          ## 🚀 Установка
+          1. Скачайте `Aureate-Launcher-Setup-*.exe`
+          2. Запустите установщик
+          3. Следуйте инструкциям
+          
+          ## 📁 Portable версия
+          Для запуска без установки используйте `Aureate-Launcher-Portable-*.zip`
+          
+          ## 🛠 Системные требования
+          - **ОС:** Windows 10/11 (64-bit)
+          - **Память:** 4 GB минимум (рекомендуется 8 GB)
+          - **Место на диске:** 10 GB свободного места
+          - **Интернет:** требуется для загрузки
+          
+          ## 🔧 Поддерживаемые сборки
+          | Сборка | Версия Minecraft | Модлоадер |
+          |--------|-----------------|-----------|
+          | Draconica | 1.18.2 | Forge |
+          | Skydustry | 1.20.1 | Forge |
+          
+          ## 📞 Поддержка
+          Проблемы и предложения оставляйте в [Issues](https://github.com/${{ github.repository }}/issues)
+          
+          ---
+          *Сборка: ${{ github.sha }}*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

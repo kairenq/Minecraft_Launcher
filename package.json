@@ -1,19 +1,19 @@
 {
   "name": "minecraft-launcher",
   "version": "1.0.0",
-  "description": "Universal Minecraft Launcher with C++ Core",
+  "description": "Aureate Launcher with C++ Core",
   "main": "src/ui/main.js",
   "scripts": {
     "start": "electron .",
-    "build:core": "cmake -B build -S . && cmake --build build --config Release",
-    "install": "npm run build:core",
+    "build": "cmake -B build -S . && cmake --build build --config Release",
+    "rebuild": "npm run build",
     "dev": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
   "build": {
-    "appId": "com.minecraft.universallauncher",
-    "productName": "Minecraft Launcher",
+    "appId": "com.aureate.launcher",
+    "productName": "Aureate Launcher",
     "directories": {
       "output": "dist"
     },
@@ -32,7 +32,9 @@
     }
   },
   "dependencies": {
-    "electron": "^25.0.0"
+    "electron": "^25.0.0",
+    "fs-extra": "^11.1.1",
+    "axios": "^1.5.0"
   },
   "devDependencies": {
     "electron-builder": "^24.6.4",

@@ -1,15 +1,36 @@
 {
-  "name": "minecraft-launcher",
+  "name": "aureate-launcher",
   "version": "1.0.0",
-  "description": "Aureate Launcher with C++ Core",
+  "description": "Minecraft Launcher with C++ backend",
   "main": "src/ui/main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "cmake -B build -S . && cmake --build build --config Release",
-    "rebuild": "npm run build",
-    "dev": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "start": "cd src/ui && electron .",
+    "dev": "cd src/ui && electron . --enable-logging",
+    "build": "electron-builder",
+    "build:windows": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac",
+    "build-core": "cd src/core && mkdir -p build && cd build && cmake .. && cmake --build . --config Release",
+    "build-addon": "cd src/core && node-gyp configure build",
+    "install-all": "npm install && cd src/ui && npm install && cd ../bridge && npm install",
+    "postinstall": "npm run build-addon",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "author": "Aureate Launcher Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0",
+    "node-gyp": "^9.0.0",
+    "cmake-js": "^7.0.0"
+  },
+  "dependencies": {
+    "fs-extra": "^11.1.1",
+    "node-addon-api": "^6.1.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   },
   "build": {
     "appId": "com.aureate.launcher",
@@ -19,26 +40,29 @@
     },
     "files": [
       "src/**/*",
-      "!src/core/**/*.cpp",
-      "!src/core/**/*.h",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
       "!**/*.map"
-    ],
-    "extraResources": [
-      "build/Release/minecraft_core.node"
     ],
     "win": {
       "target": "nsis",
       "icon": "src/ui/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "src/ui/assets/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "src/ui/assets/icon.icns"
     }
   },
-  "dependencies": {
-    "electron": "^25.0.0",
-    "fs-extra": "^11.1.1",
-    "axios": "^1.5.0"
-  },
-  "devDependencies": {
-    "electron-builder": "^24.6.4",
-    "node-gyp": "^9.0.0"
-  },
-  "gypfile": true
+  "optionalDependencies": {
+    "electron-builder-squirrel-windows": "^24.0.0"
+  }
 }

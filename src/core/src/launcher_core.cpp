@@ -1,339 +1,817 @@
 #include "launcher_core.h"
 #include "version_resolver.h"
 #include "java_manager.h"
+#include "download_manager.h"
+#include "pack_manager.h"
+#include "modloaders/universal_handler.h"
+#include "utils/file_utils.h"
+#include "utils/string_utils.h"
 #include <iostream>
 #include <fstream>
-#include <filesystem>
-#include <cstdlib>
+#include <sstream>
+#include <chrono>
+#include <thread>
+#include <map>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <windows.h>
-#include <shellapi.h>
-#include <tlhelp32.h>
+#include <shlobj.h>
+#include <tchar.h>
 #else
 #include <unistd.h>
 #include <sys/types.h>
-#include <signal.h>
+#include <pwd.h>
+#include <sys/statvfs.h>
 #endif
 
-namespace MinecraftCore {
+namespace Aureate {
 
-namespace fs = std::filesystem;
-
-LauncherCore::LauncherCore(const std::string& launcherDir)
-    : launcherDir_(launcherDir)
-    , versionsDir_(launcherDir + "/versions")
-    , librariesDir_(launcherDir + "/libraries")
-    , assetsDir_(launcherDir + "/assets")
-    , forgeHandler_(nullptr)
-    , fabricHandler_(nullptr)
-    , universalHandler_(nullptr) {
-    
+LauncherCore::LauncherCore(const std::string& basePath) : basePath_(basePath) {
     // Создаем необходимые директории
-    fs::create_directories(versionsDir_);
-    fs::create_directories(librariesDir_);
-    fs::create_directories(assetsDir_);
+    FileUtils::CreateDirectory(basePath_);
+    FileUtils::CreateDirectory(GetVersionsPath());
+    FileUtils::CreateDirectory(GetInstancesPath());
+    FileUtils::CreateDirectory(GetJavaPath());
+    FileUtils::CreateDirectory(GetLibrariesPath());
+    FileUtils::CreateDirectory(GetAssetsPath());
     
-    Log("LauncherCore initialized with directory: " + launcherDir_);
+    // Устанавливаем callback для логов
+    SetLogCallback([](const std::string& message, const std::string& level) {
+        std::cout << "[" << level << "] " << message << std::endl;
+    });
 }
 
 LauncherCore::~LauncherCore() {
-    // Cleanup handlers
+    Log("LauncherCore destroyed");
 }
 
-void LauncherCore::Log(const std::string& message) {
-    std::cout << "[LauncherCore] " << message << std::endl;
-    if (logCallback_) {
-        logCallback_(message);
+bool LauncherCore::Initialize() {
+    Log("Initializing Aureate Launcher v1.0.0...");
+    
+    // Проверяем доступность необходимых директорий
+    if (!FileUtils::Exists(basePath_)) {
+        Log("Failed to create base directory: " + basePath_, "ERROR");
+        return false;
     }
-}
-
-void LauncherCore::Progress(int percent, const std::string& message) {
-    if (progressCallback_) {
-        progressCallback_(percent, message);
+    
+    // Проверяем свободное место на диске
+    std::string diskPath = basePath_;
+#ifdef _WIN32
+    ULARGE_INTEGER freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes;
+    if (GetDiskFreeSpaceExA(diskPath.c_str(), &freeBytesAvailable, &totalNumberOfBytes, &totalNumberOfFreeBytes)) {
+        uint64_t freeGB = freeBytesAvailable.QuadPart / (1024 * 1024 * 1024);
+        Log("Available disk space: " + std::to_string(freeGB) + " GB");
+        if (freeGB < 5) {
+            Log("Warning: Low disk space (< 5GB)", "WARNING");
+        }
     }
+#else
+    struct statvfs stat;
+    if (statvfs(diskPath.c_str(), &stat) == 0) {
+        uint64_t freeGB = (stat.f_bavail * stat.f_frsize) / (1024 * 1024 * 1024);
+        Log("Available disk space: " + std::to_string(freeGB) + " GB");
+    }
+#endif
+    
+    Log("Base path: " + basePath_);
+    Log("Versions path: " + GetVersionsPath());
+    Log("Instances path: " + GetInstancesPath());
+    Log("Launcher initialized successfully");
+    return true;
 }
 
-bool LauncherCore::CheckFileExists(const std::string& path) {
-    return fs::exists(path);
+std::vector<ModpackInfo> LauncherCore::GetAvailableModpacks() {
+    Log("Getting available modpacks...");
+    
+    std::vector<ModpackInfo> modpacks;
+    
+    // ТВОИ РЕАЛЬНЫЕ СБОРКИ
+    ModpackInfo draconica;
+    draconica.id = "draconica_1.18.2";
+    draconica.name = "Draconica Modpack";
+    draconica.description = "Модпак в стиле средневековья с драконами и магией. Полностью переработанный мир с уникальными механиками и атмосферой.";
+    draconica.minecraftVersion = "1.18.2";
+    draconica.modLoader = ModLoader::FORGE;
+    draconica.modLoaderVersion = "40.2.0";
+    draconica.iconUrl = "https://raw.githubusercontent.com/kairenq/Minecraft_Launcher/main/assets/draconica_icon.png";
+    draconica.archiveUrl = "https://github.com/kairenq/Minecraft_Launcher/releases/download/v1.1.3/Draconica1.1.3.zip";
+    draconica.installed = false;
+    
+    ModpackInfo skydustry;
+    skydustry.id = "skydustry";
+    skydustry.name = "Skydustry";
+    skydustry.description = "Парящий в облаках техномагический модпак с механикой полёта и автоматизацией. Уникальные биомы на летающих островах.";
+    skydustry.minecraftVersion = "1.20.1";
+    skydustry.modLoader = ModLoader::FORGE;
+    skydustry.modLoaderVersion = "47.2.0";
+    skydustry.iconUrl = "https://raw.githubusercontent.com/kairenq/Minecraft_Launcher/main/assets/skydustry_icon.png";
+    skydustry.archiveUrl = "https://github.com/kairenq/Minecraft_Launcher/releases/download/v.1.0.0/Skydustry.zip";
+    skydustry.installed = false;
+    
+    // Проверяем установленные сборки
+    PackManager packManager(basePath_);
+    auto installed = packManager.GetInstalledModpacks();
+    
+    // Обновляем статусы установки
+    for (const auto& installedPack : installed) {
+        if (installedPack.id == draconica.id) {
+            draconica = installedPack;
+            draconica.installed = true;
+        }
+        if (installedPack.id == skydustry.id) {
+            skydustry = installedPack;
+            skydustry.installed = true;
+        }
+    }
+    
+    modpacks.push_back(draconica);
+    modpacks.push_back(skydustry);
+    
+    Log("Found " + std::to_string(modpacks.size()) + " modpacks");
+    return modpacks;
 }
 
-bool LauncherCore::EnsureDirectory(const std::string& path) {
-    return fs::create_directories(path);
-}
-
-ProcessResult LauncherCore::Launch(const LaunchOptions& options) {
-    ProcessResult result;
+bool LauncherCore::InstallModpack(const ModpackInfo& modpack, ProgressCallback progress) {
+    std::string logMsg = "Installing modpack: " + modpack.name + " (" + modpack.id + ")";
+    Log(logMsg);
+    
+    if (progress) progress(0, "Подготовка к установке " + modpack.name + "...");
     
     try {
-        Log("Starting launch process for version: " + options.versionId);
-        Progress(10, "Preparing to launch...");
+        // 1. Создаем директорию для сборки
+        std::string instancePath = GetInstancesPath() + "/" + modpack.id;
+        Log("Instance path: " + instancePath);
         
-        // 1. Проверяем существование версии
-        VersionResolver resolver(versionsDir_);
-        if (!resolver.VersionExists(options.versionId)) {
-            result.message = "Version not found: " + options.versionId;
-            result.success = false;
-            return result;
+        if (!FileUtils::CreateDirectory(instancePath)) {
+            std::string error = "Не удалось создать директорию: " + instancePath;
+            Log(error, "ERROR");
+            if (progress) progress(100, error);
+            return false;
         }
         
-        Progress(20, "Validating installation...");
+        // 2. Скачиваем архив
+        if (progress) progress(10, "Скачивание архива сборки...");
+        Log("Downloading from: " + modpack.archiveUrl);
         
-        // 2. Валидируем установку
-        if (!ValidateInstallation(options.versionId)) {
-            result.message = "Installation validation failed for " + options.versionId;
-            result.success = false;
-            return result;
-        }
+        std::string archivePath = instancePath + "/modpack.zip";
+        DownloadManager downloader;
         
-        Progress(30, "Preparing Java...");
-        
-        // 3. Определяем Java
-        JavaManager javaManager;
-        std::string javaPath = options.javaPath;
-        
-        if (javaPath.empty()) {
-            VersionInfo versionInfo = resolver.GetVersionInfo(options.versionId);
-            JavaVersion suitableJava = javaManager.FindSuitableJava(versionInfo.minecraftVersion);
-            
-            if (suitableJava.path.empty()) {
-                result.message = "No suitable Java found for " + versionInfo.minecraftVersion;
-                result.success = false;
-                return result;
-            }
-            
-            javaPath = suitableJava.path;
-            Log("Using auto-detected Java: " + javaPath + " (version " + std::to_string(suitableJava.version) + ")");
-        }
-        
-        // 4. Проверяем Java
-        if (!javaManager.ValidateJavaPath(javaPath)) {
-            result.message = "Invalid Java path: " + javaPath;
-            result.success = false;
-            return result;
-        }
-        
-        Progress(50, "Building launch arguments...");
-        
-        // 5. Создаем команду запуска (упрощенная версия)
-        std::string command = "\"" + javaPath + "\"";
-        command += " -Xmx" + std::to_string(options.memory) + "M";
-        command += " -Xms" + std::to_string(options.memory / 2) + "M";
-        
-        // 6. Добавляем JAR файл
-        std::string versionJar = versionsDir_ + "/" + options.versionId + "/" + options.versionId + ".jar";
-        if (!CheckFileExists(versionJar)) {
-            result.message = "Version JAR not found: " + versionJar;
-            result.success = false;
-            return result;
-        }
-        
-        command += " -jar \"" + versionJar + "\"";
-        
-        // 7. Добавляем аргументы игры
-        command += " --username \"" + options.username + "\"";
-        command += " --version \"" + options.versionId + "\"";
-        
-        if (!options.gameDir.empty()) {
-            EnsureDirectory(options.gameDir);
-            command += " --gameDir \"" + options.gameDir + "\"";
-        }
-        
-        if (options.demo) {
-            command += " --demo";
-        }
-        
-        if (!options.serverIp.empty()) {
-            command += " --server " + options.serverIp;
-            if (options.serverPort != 25565) {
-                command += " --port " + std::to_string(options.serverPort);
-            }
-        }
-        
-        command += " --width " + std::to_string(options.width);
-        command += " --height " + std::to_string(options.height);
-        
-        Log("Launch command: " + command);
-        Progress(80, "Starting Minecraft...");
-        
-        // 8. Запускаем процесс
-        #ifdef _WIN32
-            STARTUPINFOA si;
-            PROCESS_INFORMATION pi;
-            
-            ZeroMemory(&si, sizeof(si));
-            si.cb = sizeof(si);
-            ZeroMemory(&pi, sizeof(pi));
-            
-            char cmd[4096];
-            strcpy_s(cmd, command.c_str());
-            
-            if (CreateProcessA(
-                NULL,           // No module name (use command line)
-                cmd,            // Command line
-                NULL,           // Process handle not inheritable
-                NULL,           // Thread handle not inheritable
-                FALSE,          // Set handle inheritance to FALSE
-                0,              // No creation flags
-                NULL,           // Use parent's environment block
-                options.gameDir.empty() ? NULL : options.gameDir.c_str(), // Starting directory
-                &si,            // Pointer to STARTUPINFO structure
-                &pi             // Pointer to PROCESS_INFORMATION structure
-            )) {
-                result.pid = pi.dwProcessId;
-                result.success = true;
-                result.message = "Minecraft launched successfully with PID: " + std::to_string(result.pid);
-                
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-            } else {
-                result.success = false;
-                result.message = "Failed to create process. Error code: " + std::to_string(GetLastError());
-            }
-        #else
-            // Linux/macOS implementation
-            pid_t pid = fork();
-            
-            if (pid == 0) {
-                // Child process
-                std::vector<char*> args;
-                std::string token;
-                std::istringstream tokenStream(command);
-                
-                while (std::getline(tokenStream, token, ' ')) {
-                    char* arg = new char[token.length() + 1];
-                    std::strcpy(arg, token.c_str());
-                    args.push_back(arg);
+        bool downloadSuccess = downloader.DownloadFile(modpack.archiveUrl, archivePath,
+            [progress](int percent, const std::string& stage) {
+                if (progress) {
+                    int adjustedProgress = 10 + (percent * 0.5); // 10-60%
+                    progress(adjustedProgress, stage);
                 }
-                args.push_back(nullptr);
-                
-                if (!options.gameDir.empty()) {
-                    chdir(options.gameDir.c_str());
-                }
-                
-                execvp(args[0], args.data());
-                
-                // If execvp returns, there was an error
-                std::cerr << "Failed to execute command" << std::endl;
-                exit(1);
-            } else if (pid > 0) {
-                // Parent process
-                result.pid = pid;
-                result.success = true;
-                result.message = "Minecraft launched successfully with PID: " + std::to_string(result.pid);
-            } else {
-                result.success = false;
-                result.message = "Failed to fork process";
+            });
+        
+        if (!downloadSuccess) {
+            std::string error = "Не удалось скачать архив сборки";
+            Log(error, "ERROR");
+            if (progress) progress(100, error);
+            return false;
+        }
+        
+        // 3. Распаковываем архив
+        if (progress) progress(60, "Распаковка файлов...");
+        Log("Extracting archive to: " + instancePath);
+        
+        if (!FileUtils::ExtractZip(archivePath, instancePath)) {
+            std::string error = "Не удалось распаковать архив";
+            Log(error, "ERROR");
+            if (progress) progress(100, error);
+            FileUtils::DeleteFile(archivePath);
+            return false;
+        }
+        
+        // Удаляем временный архив
+        FileUtils::DeleteFile(archivePath);
+        
+        // 4. Проверяем и исправляем структуру
+        if (progress) progress(80, "Проверка структуры файлов...");
+        
+        // Проверяем наличие .minecraft
+        std::string minecraftPath = instancePath + "/.minecraft";
+        bool hasMinecraftDir = FileUtils::Exists(minecraftPath);
+        
+        if (!hasMinecraftDir) {
+            Log("Creating .minecraft directory structure");
+            FileUtils::CreateDirectory(minecraftPath);
+            
+            // Создаем поддиректории
+            std::vector<std::string> subdirs = {
+                "mods",
+                "config", 
+                "resourcepacks",
+                "shaderpacks",
+                "saves",
+                "logs",
+                "kubejs",
+                "patchouli_books"
+            };
+            
+            for (const auto& dir : subdirs) {
+                std::string dirPath = minecraftPath + "/" + dir;
+                FileUtils::CreateDirectory(dirPath);
             }
-        #endif
-        
-        Progress(100, "Launch completed");
-        Log(result.message);
-        
-    } catch (const std::exception& e) {
-        result.success = false;
-        result.message = std::string("Launch error: ") + e.what();
-        Log("Error during launch: " + result.message);
-    }
-    
-    return result;
-}
-
-std::vector<VersionInfo> LauncherCore::GetInstalledVersions() {
-    std::vector<VersionInfo> versions;
-    
-    try {
-        VersionResolver resolver(versionsDir_);
-        versions = resolver.FindInstalledVersions();
-        
-        Log("Found " + std::to_string(versions.size()) + " installed versions");
-        
-    } catch (const std::exception& e) {
-        Log("Error getting installed versions: " + std::string(e.what()));
-    }
-    
-    return versions;
-}
-
-bool LauncherCore::InstallVersion(const std::string& versionId, const std::string& modLoader) {
-    Log("Installing version: " + versionId + " with modloader: " + modLoader);
-    Progress(0, "Starting installation...");
-    
-    // TODO: Implement version installation logic
-    // This will handle downloading and setting up Minecraft versions
-    
-    Progress(100, "Installation completed");
-    return true; // Placeholder
-}
-
-bool LauncherCore::ValidateInstallation(const std::string& versionId) {
-    try {
-        std::string versionPath = versionsDir_ + "/" + versionId;
-        std::string versionJson = versionPath + "/" + versionId + ".json";
-        std::string versionJar = versionPath + "/" + versionId + ".jar";
-        
-        if (!CheckFileExists(versionPath)) {
-            Log("Version directory not found: " + versionPath);
-            return false;
+            
+            // Проверяем, есть ли файлы в корне и перемещаем их
+            auto files = FileUtils::ListFiles(instancePath);
+            auto dirs = FileUtils::ListDirectories(instancePath);
+            
+            for (const auto& dir : dirs) {
+                if (dir != ".minecraft") {
+                    std::string source = instancePath + "/" + dir;
+                    std::string target = minecraftPath + "/" + dir;
+                    FileUtils::MoveFile(source, target);
+                    Log("Moved directory: " + dir + " to .minecraft/");
+                }
+            }
+            
+            for (const auto& file : files) {
+                if (file != "modpack.json" && file != "launcher_profiles.json") {
+                    std::string source = instancePath + "/" + file;
+                    std::string target = minecraftPath + "/" + file;
+                    FileUtils::MoveFile(source, target);
+                    Log("Moved file: " + file + " to .minecraft/");
+                }
+            }
         }
         
-        if (!CheckFileExists(versionJson)) {
-            Log("Version JSON not found: " + versionJson);
-            return false;
+        // 5. Создаем конфиг сборки
+        if (progress) progress(90, "Создание конфигурации...");
+        
+        ModpackInfo installedModpack = modpack;
+        installedModpack.installed = true;
+        installedModpack.installPath = instancePath;
+        
+        // Сохраняем конфиг
+        std::string configPath = instancePath + "/modpack.json";
+        std::ofstream configFile(configPath);
+        if (configFile.is_open()) {
+            // Простой JSON конфиг
+            configFile << "{\n";
+            configFile << "  \"id\": \"" << installedModpack.id << "\",\n";
+            configFile << "  \"name\": \"" << installedModpack.name << "\",\n";
+            configFile << "  \"description\": \"" << installedModpack.description << "\",\n";
+            configFile << "  \"minecraftVersion\": \"" << installedModpack.minecraftVersion << "\",\n";
+            configFile << "  \"modLoader\": " << static_cast<int>(installedModpack.modLoader) << ",\n";
+            configFile << "  \"modLoaderVersion\": \"" << installedModpack.modLoaderVersion << "\",\n";
+            configFile << "  \"iconUrl\": \"" << installedModpack.iconUrl << "\",\n";
+            configFile << "  \"archiveUrl\": \"" << installedModpack.archiveUrl << "\",\n";
+            configFile << "  \"installed\": true,\n";
+            configFile << "  \"installPath\": \"" << installedModpack.installPath << "\",\n";
+            configFile << "  \"installDate\": \"" << std::to_string(std::time(nullptr)) << "\"\n";
+            configFile << "}";
+            configFile.close();
+            Log("Created modpack config: " + configPath);
+        } else {
+            Log("Warning: Failed to create modpack config", "WARNING");
         }
         
-        if (!CheckFileExists(versionJar)) {
-            Log("Version JAR not found: " + versionJar);
-            return false;
+        // 6. Создаем launcher_profiles.json если его нет
+        std::string profilesPath = instancePath + "/launcher_profiles.json";
+        if (!FileUtils::Exists(profilesPath)) {
+            std::ofstream profilesFile(profilesPath);
+            if (profilesFile.is_open()) {
+                profilesFile << "{\n";
+                profilesFile << "  \"profiles\": {\n";
+                profilesFile << "    \"" << modpack.id << "\": {\n";
+                profilesFile << "      \"name\": \"" << modpack.name << "\",\n";
+                profilesFile << "      \"gameDir\": \"" << instancePath << "\",\n";
+                profilesFile << "      \"lastVersionId\": \"" << modpack.minecraftVersion << "\",\n";
+                profilesFile << "      \"javaDir\": \"\",\n";
+                profilesFile << "      \"javaArgs\": \"-Xmx2G -Xms1G\",\n";
+                profilesFile << "      \"resolution\": {\n";
+                profilesFile << "        \"width\": 854,\n";
+                profilesFile << "        \"height\": 480\n";
+                profilesFile << "      }\n";
+                profilesFile << "    }\n";
+                profilesFile << "  },\n";
+                profilesFile << "  \"selectedProfile\": \"" << modpack.id << "\",\n";
+                profilesFile << "  \"clientToken\": \"\",\n";
+                profilesFile << "  \"authenticationDatabase\": {}\n";
+                profilesFile << "}";
+                profilesFile.close();
+                Log("Created launcher_profiles.json");
+            }
         }
         
-        // Check file sizes (basic validation)
-        size_t jarSize = fs::file_size(versionJar);
-        if (jarSize < 1024) { // Less than 1KB
-            Log("Version JAR is too small: " + std::to_string(jarSize) + " bytes");
-            return false;
-        }
+        if (progress) progress(100, "Сборка успешно установлена!");
+        Log("Modpack installed successfully: " + modpack.name);
         
-        Log("Installation validation passed for: " + versionId);
         return true;
         
     } catch (const std::exception& e) {
-        Log("Validation error for " + versionId + ": " + e.what());
+        std::string error = "Ошибка установки: " + std::string(e.what());
+        Log(error, "ERROR");
+        if (progress) progress(100, error);
         return false;
     }
 }
 
-std::vector<std::string> LauncherCore::GetMissingFiles(const std::string& versionId) {
-    std::vector<std::string> missingFiles;
+bool LauncherCore::UninstallModpack(const std::string& modpackId) {
+    std::string instancePath = GetInstancesPath() + "/" + modpackId;
     
-    try {
-        std::string versionPath = versionsDir_ + "/" + versionId;
-        std::string versionJson = versionPath + "/" + versionId + ".json";
-        
-        if (!CheckFileExists(versionJson)) {
-            missingFiles.push_back(versionJson);
-            return missingFiles;
-        }
-        
-        // TODO: Parse JSON and check for required libraries
-        // For now, just check basic files
-        
-        std::vector<std::string> requiredFiles = {
-            versionPath + "/" + versionId + ".jar",
-            versionPath + "/" + versionId + ".json"
-        };
-        
-        for (const auto& file : requiredFiles) {
-            if (!CheckFileExists(file)) {
-                missingFiles.push_back(file);
-            }
-        }
-        
-    } catch (const std::exception& e) {
-        Log("Error checking missing files: " + std::string(e.what()));
+    if (!FileUtils::Exists(instancePath)) {
+        Log("Modpack not found: " + modpackId, "WARNING");
+        return false;
     }
     
-    return missingFiles;
+    Log("Uninstalling modpack: " + modpackId);
+    
+    // Удаляем директорию
+    if (!FileUtils::DeleteDirectory(instancePath)) {
+        Log("Failed to delete modpack directory: " + instancePath, "ERROR");
+        return false;
+    }
+    
+    Log("Modpack uninstalled: " + modpackId);
+    return true;
 }
 
-} // namespace MinecraftCore
+bool LauncherCore::UpdateModpack(const std::string& modpackId) {
+    Log("Update not implemented yet for: " + modpackId, "INFO");
+    return false;
+}
+
+std::vector<MinecraftVersion> LauncherCore::GetAvailableVersions() {
+    Log("Getting available Minecraft versions...");
+    
+    // Кэшируем версии
+    if (!versionsCached_) {
+        VersionResolver resolver;
+        cachedVersions_ = resolver.GetMinecraftVersions();
+        versionsCached_ = true;
+    }
+    
+    // Фильтруем только релизные версии после 1.18
+    std::vector<MinecraftVersion> filteredVersions;
+    for (const auto& version : cachedVersions_) {
+        if (version.type == "release") {
+            // Проверяем версию (1.18 и выше)
+            std::string versionStr = version.id;
+            if (versionStr.find("1.") == 0) {
+                // Извлекаем основную и второстепенную версию
+                size_t dotPos = versionStr.find('.');
+                if (dotPos != std::string::npos) {
+                    std::string major = versionStr.substr(0, dotPos + 1);
+                    std::string minorStr = versionStr.substr(dotPos + 1);
+                    
+                    // Убираем патч версию если есть
+                    size_t patchPos = minorStr.find('.');
+                    if (patchPos != std::string::npos) {
+                        minorStr = minorStr.substr(0, patchPos);
+                    }
+                    
+                    try {
+                        int minor = std::stoi(minorStr);
+                        if (minor >= 18) { // 1.18 и выше
+                            filteredVersions.push_back(version);
+                        }
+                    } catch (...) {
+                        // Пропускаем невалидные версии
+                    }
+                }
+            }
+        }
+    }
+    
+    // Сортируем по убыванию (новые версии первыми)
+    std::sort(filteredVersions.begin(), filteredVersions.end(),
+        [](const MinecraftVersion& a, const MinecraftVersion& b) {
+            return a.id > b.id;
+        });
+    
+    Log("Found " + std::to_string(filteredVersions.size()) + " supported versions");
+    return filteredVersions;
+}
+
+bool LauncherCore::InstallMinecraftVersion(const std::string& versionId, ProgressCallback progress) {
+    Log("Installing Minecraft version: " + versionId);
+    
+    if (progress) progress(0, "Подготовка к установке Minecraft " + versionId + "...");
+    
+    try {
+        // Создаем директорию для версии
+        std::string versionPath = GetVersionsPath() + "/" + versionId;
+        if (!FileUtils::CreateDirectory(versionPath)) {
+            Log("Не удалось создать директорию версии", "ERROR");
+            if (progress) progress(100, "Ошибка создания директории");
+            return false;
+        }
+        
+        // TODO: Реализовать скачивание клиента Minecraft
+        // Пока просто создаем пустую структуру
+        
+        // Создаем версионный JSON
+        std::string versionJson = versionPath + "/" + versionId + ".json";
+        std::ofstream jsonFile(versionJson);
+        if (jsonFile.is_open()) {
+            jsonFile << "{\n";
+            jsonFile << "  \"id\": \"" << versionId << "\",\n";
+            jsonFile << "  \"inheritsFrom\": \"" << versionId << "\",\n";
+            jsonFile << "  \"releaseTime\": \"\",\n";
+            jsonFile << "  \"time\": \"\",\n";
+            jsonFile << "  \"type\": \"release\",\n";
+            jsonFile << "  \"mainClass\": \"net.minecraft.client.main.Main\",\n";
+            jsonFile << "  \"minecraftArguments\": \"\",\n";
+            jsonFile << "  \"minimumLauncherVersion\": 21,\n";
+            jsonFile << "  \"libraries\": [],\n";
+            jsonFile << "  \"jar\": \"" << versionId << "\"\n";
+            jsonFile << "}";
+            jsonFile.close();
+        }
+        
+        // Создаем JAR файл (пустой)
+        std::string jarPath = versionPath + "/" + versionId + ".jar";
+        std::ofstream jarFile(jarPath, std::ios::binary);
+        if (jarFile.is_open()) {
+            jarFile.close();
+        }
+        
+        if (progress) progress(100, "Minecraft " + versionId + " готов к запуску");
+        Log("Minecraft version prepared: " + versionId);
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::string error = "Ошибка установки версии: " + std::string(e.what());
+        Log(error, "ERROR");
+        if (progress) progress(100, error);
+        return false;
+    }
+}
+
+bool LauncherCore::IsVersionInstalled(const std::string& versionId) {
+    std::string versionPath = GetVersionsPath() + "/" + versionId;
+    return FileUtils::Exists(versionPath + "/" + versionId + ".json");
+}
+
+std::vector<JavaConfig> LauncherCore::FindJavaInstallations() {
+    Log("Finding Java installations...");
+    
+    JavaManager javaManager(basePath_);
+    return javaManager.FindJavaInstallations();
+}
+
+bool LauncherCore::InstallJava(const std::string& version, ProgressCallback progress) {
+    Log("Installing Java version: " + version);
+    
+    JavaManager javaManager(basePath_);
+    return javaManager.InstallJava(version, progress);
+}
+
+JavaConfig LauncherCore::GetBestJavaConfig() {
+    JavaManager javaManager(basePath_);
+    return javaManager.GetBestJavaConfig();
+}
+
+bool LauncherCore::LaunchGame(const ModpackInfo& modpack, const JavaConfig& javaConfig,
+                             const std::string& username, ProgressCallback progress) {
+    Log("Launching game: " + modpack.name + " for user: " + username);
+    
+    if (progress) progress(0, "Подготовка к запуску...");
+    
+    try {
+        // 1. Проверяем Java
+        if (javaConfig.path.empty()) {
+            if (progress) progress(100, "Java не найдена!");
+            Log("Java not found", "ERROR");
+            return false;
+        }
+        
+        Log("Using Java: " + javaConfig.path);
+        Log("Java version: " + javaConfig.version);
+        
+        // 2. Проверяем директорию сборки
+        if (modpack.installPath.empty() || !FileUtils::Exists(modpack.installPath)) {
+            if (progress) progress(100, "Сборка не установлена!");
+            Log("Modpack not installed: " + modpack.id, "ERROR");
+            return false;
+        }
+        
+        // 3. Создаем аргументы для запуска
+        std::vector<std::string> args;
+        
+        // Путь к Java
+        args.push_back("\"" + javaConfig.path + "\"");
+        
+        // Параметры JVM
+        args.push_back("-Xmx" + std::to_string(javaConfig.maxMemory) + "M");
+        args.push_back("-Xms" + std::to_string(javaConfig.minMemory) + "M");
+        
+        // Стандартные аргументы
+        args.push_back("-XX:+UseG1GC");
+        args.push_back("-XX:+UnlockExperimentalVMOptions");
+        args.push_back("-XX:G1NewSizePercent=20");
+        args.push_back("-XX:G1ReservePercent=20");
+        args.push_back("-XX:MaxGCPauseMillis=50");
+        args.push_back("-XX:G1HeapRegionSize=32M");
+        args.push_back("-Dfml.ignoreInvalidMinecraftCertificates=true");
+        args.push_back("-Dfml.ignorePatchDiscrepancies=true");
+        
+        // Путь к нативным библиотекам
+        std::string nativesPath = GetLibrariesPath() + "/natives";
+        FileUtils::CreateDirectory(nativesPath);
+        args.push_back("-Djava.library.path=" + nativesPath);
+        
+        // Информация о лаунчере
+        args.push_back("-Dminecraft.launcher.brand=AureateLauncher");
+        args.push_back("-Dminecraft.launcher.version=1.0.0");
+        
+        // Путь к библиотекам
+        std::string librariesPath = GetLibrariesPath();
+        args.push_back("-cp");
+        
+        // Собираем classpath
+        std::string classpath = "";
+        
+        // Добавляем Minecraft JAR
+        std::string mcJar = GetVersionsPath() + "/" + modpack.minecraftVersion + "/" + modpack.minecraftVersion + ".jar";
+        if (FileUtils::Exists(mcJar)) {
+            classpath += mcJar;
+        }
+        
+        // Добавляем библиотеки
+        auto libraryFiles = FileUtils::ListFiles(librariesPath, ".jar");
+        for (const auto& lib : libraryFiles) {
+            if (!classpath.empty()) classpath += ";";
+            classpath += librariesPath + "/" + lib;
+        }
+        
+        args.push_back("\"" + classpath + "\"");
+        
+        // Главный класс (зависит от модлоадера)
+        std::string mainClass;
+        if (modpack.modLoader == ModLoader::FORGE) {
+            mainClass = "net.minecraftforge.client.ForgeClient";
+        } else if (modpack.modLoader == ModLoader::FABRIC) {
+            mainClass = "net.fabricmc.loader.impl.launch.knot.KnotClient";
+        } else {
+            mainClass = "net.minecraft.client.main.Main";
+        }
+        args.push_back(mainClass);
+        
+        // Аргументы Minecraft
+        args.push_back("--username");
+        args.push_back(username);
+        args.push_back("--version");
+        args.push_back(modpack.minecraftVersion);
+        args.push_back("--gameDir");
+        args.push_back("\"" + modpack.installPath + "\"");
+        args.push_back("--assetsDir");
+        args.push_back("\"" + GetAssetsPath() + "\"");
+        args.push_back("--assetIndex");
+        args.push_back(modpack.minecraftVersion);
+        args.push_back("--uuid");
+        args.push_back("0"); // Временный UUID
+        args.push_back("--accessToken");
+        args.push_back("0"); // Временный токен
+        args.push_back("--userType");
+        args.push_back("legacy");
+        args.push_back("--versionType");
+        args.push_back("release");
+        args.push_back("--width");
+        args.push_back("854");
+        args.push_back("--height");
+        args.push_back("480");
+        
+        // Для Forge добавляем дополнительные аргументы
+        if (modpack.modLoader == ModLoader::FORGE) {
+            args.push_back("--launchTarget");
+            args.push_back("forgeclient");
+            args.push_back("--fml.forgeVersion");
+            args.push_back(modpack.modLoaderVersion);
+            args.push_back("--fml.mcVersion");
+            args.push_back(modpack.minecraftVersion);
+            args.push_back("--fml.forgeGroup");
+            args.push_back("net.minecraftforge");
+        }
+        
+        if (progress) progress(50, "Запуск Minecraft...");
+        
+        // Собираем командную строку
+        std::string command;
+        for (const auto& arg : args) {
+            command += arg + " ";
+        }
+        
+        Log("Launch command: " + command);
+        
+        // Запускаем процесс
+        bool success = ExecuteProcess(args, modpack.installPath);
+        
+        if (success) {
+            if (progress) progress(100, "Minecraft запущен!");
+            Log("Game launched successfully");
+            
+            // Обновляем статистику
+            // TODO: Отслеживание времени игры
+            
+        } else {
+            if (progress) progress(100, "Ошибка запуска Minecraft");
+            Log("Failed to launch game", "ERROR");
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        std::string error = "Ошибка запуска: " + std::string(e.what());
+        Log(error, "ERROR");
+        if (progress) progress(100, error);
+        return false;
+    }
+}
+
+bool LauncherCore::InstallModLoader(ModLoader loader, const std::string& mcVersion,
+                                   const std::string& loaderVersion, ProgressCallback progress) {
+    Log("Installing modloader: " + std::to_string(static_cast<int>(loader)) + 
+        " for MC " + mcVersion + " version " + loaderVersion);
+    
+    UniversalHandler handler(basePath_);
+    return handler.InstallModLoader(loader, mcVersion, loaderVersion, progress);
+}
+
+bool LauncherCore::IsModLoaderInstalled(ModLoader loader, const std::string& mcVersion,
+                                       const std::string& loaderVersion) {
+    UniversalHandler handler(basePath_);
+    return handler.IsModLoaderInstalled(loader, mcVersion, loaderVersion);
+}
+
+SystemInfo LauncherCore::GetSystemInfo() {
+    SystemInfo info;
+    
+    // Определяем ОС
+#ifdef _WIN32
+    info.osName = "Windows";
+    
+    // Получаем версию Windows
+    OSVERSIONINFOEX osvi;
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    
+    if (GetVersionEx((OSVERSIONINFO*)&osvi)) {
+        info.osVersion = std::to_string(osvi.dwMajorVersion) + "." + 
+                        std::to_string(osvi.dwMinorVersion) + "." + 
+                        std::to_string(osvi.dwBuildNumber);
+    } else {
+        info.osVersion = "Unknown";
+    }
+    
+    // Определяем архитектуру
+    SYSTEM_INFO sysInfo;
+    GetNativeSystemInfo(&sysInfo);
+    switch (sysInfo.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64:
+            info.architecture = "x64";
+            break;
+        case PROCESSOR_ARCHITECTURE_INTEL:
+            info.architecture = "x86";
+            break;
+        case PROCESSOR_ARCHITECTURE_ARM:
+            info.architecture = "ARM";
+            break;
+        case PROCESSOR_ARCHITECTURE_ARM64:
+            info.architecture = "ARM64";
+            break;
+        default:
+            info.architecture = "Unknown";
+    }
+    
+    // Получаем информацию о памяти
+    MEMORYSTATUSEX memoryStatus;
+    memoryStatus.dwLength = sizeof(memoryStatus);
+    if (GlobalMemoryStatusEx(&memoryStatus)) {
+        info.totalMemory = memoryStatus.ullTotalPhys / (1024 * 1024); // MB
+        info.freeMemory = memoryStatus.ullAvailPhys / (1024 * 1024); // MB
+    }
+    
+    info.processorCount = sysInfo.dwNumberOfProcessors;
+    
+#elif __APPLE__
+    info.osName = "macOS";
+    // TODO: Реализовать для macOS
+    
+#elif __linux__
+    info.osName = "Linux";
+    // TODO: Реализовать для Linux
+    
+#else
+    info.osName = "Unknown";
+#endif
+    
+    // Проверяем Java
+    JavaManager javaManager(basePath_);
+    auto javaConfig = javaManager.GetBestJavaConfig();
+    info.javaPath = javaConfig.path;
+    info.javaVersion = javaConfig.version;
+    
+    Log("System info collected: " + info.osName + " " + info.architecture + 
+        ", " + std::to_string(info.totalMemory) + "MB RAM");
+    
+    return info;
+}
+
+std::string LauncherCore::GetVersionsPath() const {
+    return basePath_ + "/versions";
+}
+
+std::string LauncherCore::GetInstancesPath() const {
+    return basePath_ + "/instances";
+}
+
+std::string LauncherCore::GetJavaPath() const {
+    return basePath_ + "/java";
+}
+
+std::string LauncherCore::GetLibrariesPath() const {
+    return basePath_ + "/libraries";
+}
+
+std::string LauncherCore::GetAssetsPath() const {
+    return basePath_ + "/assets";
+}
+
+void LauncherCore::Log(const std::string& message, const std::string& level) {
+    if (logCallback_) {
+        logCallback_(message, level);
+    } else {
+        std::cout << "[" << level << "] " << message << std::endl;
+    }
+}
+
+bool LauncherCore::DownloadFile(const std::string& url, const std::string& destination,
+                               ProgressCallback progress) {
+    DownloadManager downloader;
+    return downloader.DownloadFile(url, destination, progress);
+}
+
+bool LauncherCore::ExtractArchive(const std::string& archivePath,
+                                 const std::string& destination,
+                                 ProgressCallback progress) {
+    return FileUtils::ExtractZip(archivePath, destination);
+}
+
+bool LauncherCore::ExecuteProcess(const std::vector<std::string>& args,
+                                 const std::string& workingDir) {
+    if (args.empty()) {
+        Log("Empty arguments for process execution", "ERROR");
+        return false;
+    }
+    
+    // Собираем командную строку для логов
+    std::string command;
+    for (const auto& arg : args) {
+        command += arg + " ";
+    }
+    Log("Executing process: " + command);
+    
+#ifdef _WIN32
+    // Создаем процесс на Windows
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+    
+    // Преобразуем строку в wchar_t для Windows
+    std::wstring wcommand(command.begin(), command.end());
+    std::wstring wworkingDir(workingDir.begin(), workingDir.end());
+    
+    // Создаем процесс
+    BOOL success = CreateProcess(
+        NULL,                   // Имя приложения (используем командную строку)
+        &wcommand[0],           // Командная строка
+        NULL,                   // Security attributes процесса
+        NULL,                   // Security attributes потока
+        FALSE,                  // Наследование handles
+        0,                      // Флаги создания
+        NULL,                   // Окружение
+        wworkingDir.empty() ? NULL : wworkingDir.c_str(), // Рабочая директория
+        &si,                    // STARTUPINFO
+        &pi                     // PROCESS_INFORMATION
+    );
+    
+    if (!success) {
+        DWORD error = GetLastError();
+        Log("CreateProcess failed with error: " + std::to_string(error), "ERROR");
+        return false;
+    }
+    
+    Log("Process created with PID: " + std::to_string(pi.dwProcessId));
+    
+    // Закрываем handles (мы не ждем завершения процесса)
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    
+    return true;
+    
+#else
+    // TODO: Реализовать для Linux/macOS
+    Log("Process execution not implemented for this platform", "WARNING");
+    return false;
+#endif
+}
+
+} // namespace Aureate

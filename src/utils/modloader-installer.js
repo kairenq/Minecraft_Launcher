@@ -18,7 +18,10 @@ class ModLoaderInstaller {
       timeout: 30000,
       maxRedirects: 10,
       maxContentLength: Infinity,
-      maxBodyLength: Infinity
+      maxBodyLength: Infinity,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
     };
   }
 
@@ -161,7 +164,7 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Установка Forge - используем ForgeInstaller
+   * Установка Forge - с улучшенной проверкой
    */
   async installForge(minecraftVersion, forgeVersion, onProgress) {
     try {
@@ -174,12 +177,20 @@ class ModLoaderInstaller {
         console.log(`[FORGE] Выбрана версия: ${forgeVersion}`);
       }
 
-      // ПРЯМОЙ ВЫЗОВ ForgeInstaller - больше никаких промежуточных методов
+      // Проверяем базовый Minecraft
+      await this.checkBaseMinecraft(minecraftVersion);
+
+      // ПРЯМОЙ ВЫЗОВ ForgeInstaller
+      onProgress({ stage: 'Запуск установки Forge', percent: 5 });
       const versionId = await this.forgeInstaller.installForge(
         minecraftVersion, 
         forgeVersion, 
         onProgress
       );
+
+      // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА после установки
+      onProgress({ stage: 'Проверка установки', percent: 95 });
+      await this.verifyForgeInstallation(versionId);
 
       onProgress({ stage: 'Forge установлен', percent: 100 });
       console.log('[FORGE] ✓ Установка завершена');
@@ -197,10 +208,78 @@ class ModLoaderInstaller {
   }
 
   /**
+   * Проверка базового Minecraft
+   */
+  async checkBaseMinecraft(minecraftVersion) {
+    const baseVersionDir = path.join(this.versionsDir, minecraftVersion);
+    const baseVersionJar = path.join(baseVersionDir, `${minecraftVersion}.jar`);
+
+    if (!fs.existsSync(baseVersionJar)) {
+      throw new Error(`Базовый Minecraft ${minecraftVersion} не установлен. Сначала установите Minecraft.`);
+    }
+
+    const stats = await fs.stat(baseVersionJar);
+    if (stats.size < 1000000) {
+      throw new Error(`Базовый Minecraft JAR поврежден (${(stats.size / 1024 / 1024).toFixed(2)} MB). Переустановите Minecraft.`);
+    }
+
+    console.log(`[FORGE] ✓ Базовый Minecraft найден: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+  }
+
+  /**
+   * Проверка установки Forge
+   */
+  async verifyForgeInstallation(versionId) {
+    const forgeDir = path.join(this.versionsDir, versionId);
+    const forgeJar = path.join(forgeDir, `${versionId}.jar`);
+    const forgeJson = path.join(forgeDir, `${versionId}.json`);
+    
+    console.log(`[VERIFY] Проверка установки Forge ${versionId}...`);
+
+    if (!fs.existsSync(forgeDir)) {
+      throw new Error(`Папка Forge не создана: ${forgeDir}`);
+    }
+
+    if (!fs.existsSync(forgeJar)) {
+      throw new Error(`Forge JAR не создан: ${forgeJar}`);
+    }
+
+    if (!fs.existsSync(forgeJson)) {
+      throw new Error(`Forge JSON не создан: ${forgeJson}`);
+    }
+
+    const jarStats = await fs.stat(forgeJar);
+    const jsonStats = await fs.stat(forgeJson);
+
+    console.log(`[VERIFY] ✓ Forge JAR: ${(jarStats.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[VERIFY] ✓ Forge JSON: ${(jsonStats.size / 1024).toFixed(2)} KB`);
+
+    if (jarStats.size < 1000) {
+      console.warn(`[VERIFY] ⚠️  ВНИМАНИЕ: Forge JAR слишком маленький (${jarStats.size} байт)`);
+      console.warn(`[VERIFY] ⚠️  Это может привести к ошибке при запуске!`);
+    }
+
+    // Проверяем что JSON валиден
+    try {
+      const jsonData = await fs.readJson(forgeJson);
+      if (!jsonData.mainClass) {
+        throw new Error('JSON не содержит mainClass');
+      }
+      console.log(`[VERIFY] ✓ JSON валиден, mainClass: ${jsonData.mainClass}`);
+    } catch (error) {
+      throw new Error(`Forge JSON поврежден: ${error.message}`);
+    }
+
+    console.log('[VERIFY] ✓ Forge установлен корректно');
+  }
+
+  /**
    * Получение рекомендованной версии Forge
    */
   async getRecommendedForgeVersion(minecraftVersion) {
     try {
+      console.log('[FORGE] Получение рекомендованной версии...');
+      
       const promotions = await axios.get(
         'https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json', 
         this.axiosConfig
@@ -218,6 +297,7 @@ class ModLoaderInstaller {
         throw new Error(`Forge не найден для Minecraft ${minecraftVersion}`);
       }
 
+      console.log(`[FORGE] Найдена версия: ${forgeVersion}`);
       return forgeVersion;
     } catch (error) {
       console.warn('[FORGE] Не удалось получить рекомендованную версию:', error.message);
@@ -241,7 +321,7 @@ class ModLoaderInstaller {
   }
 
   /**
-   * Проверка установки модлоадера - ИСПРАВЛЕННАЯ
+   * Проверка установки модлоадера
    */
   async checkInstalled(modLoader, minecraftVersion, modLoaderVersion) {
     if (modLoader === 'vanilla') {
@@ -269,18 +349,53 @@ class ModLoaderInstaller {
     }
 
     if (modLoader === 'forge') {
-      // Для Forge проверяем существование папки версии и JSON файла
-      const forgeId = `${minecraftVersion}-forge-${modLoaderVersion}`;
+      // Определяем версию Forge
+      let forgeVersion = modLoaderVersion;
+      if (!forgeVersion) {
+        try {
+          forgeVersion = await this.getRecommendedForgeVersion(minecraftVersion);
+        } catch (error) {
+          console.warn('[CHECK] Не удалось определить версию Forge:', error.message);
+          return false;
+        }
+      }
+
+      const forgeId = `${minecraftVersion}-forge-${forgeVersion}`;
       const forgeDir = path.join(this.versionsDir, forgeId);
       const forgeJsonPath = path.join(forgeDir, `${forgeId}.json`);
+      const forgeJarPath = path.join(forgeDir, `${forgeId}.jar`);
       
-      // Проверяем что папка существует и в ней есть JSON файл
+      // Проверяем что оба файла существуют и не пустые
       const dirExists = await fs.pathExists(forgeDir);
       const jsonExists = await fs.pathExists(forgeJsonPath);
+      const jarExists = await fs.pathExists(forgeJarPath);
       
-      console.log(`[CHECK] Forge ${forgeId}: dir=${dirExists}, json=${jsonExists}`);
+      console.log(`[CHECK] Forge ${forgeId}: dir=${dirExists}, json=${jsonExists}, jar=${jarExists}`);
       
-      return dirExists && jsonExists;
+      if (!dirExists || !jsonExists || !jarExists) {
+        return false;
+      }
+
+      // Проверяем размеры файлов
+      try {
+        const jarStats = await fs.stat(forgeJarPath);
+        const jsonStats = await fs.stat(forgeJsonPath);
+        
+        if (jarStats.size < 1000) {
+          console.warn(`[CHECK] ⚠️  Forge JAR слишком маленький: ${jarStats.size} байт`);
+          return false;
+        }
+        
+        if (jsonStats.size < 100) {
+          console.warn(`[CHECK] ⚠️  Forge JSON слишком маленький: ${jsonStats.size} байт`);
+          return false;
+        }
+        
+        return true;
+      } catch (error) {
+        console.warn(`[CHECK] Ошибка проверки размеров: ${error.message}`);
+        return false;
+      }
     }
 
     return false;

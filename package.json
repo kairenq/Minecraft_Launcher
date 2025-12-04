@@ -6,74 +6,42 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging",
-    "build": "electron-builder",
+    "build": "electron-builder --win",
     "build:windows": "electron-builder --win",
-    "build:linux": "electron-builder --linux",
-    "build:mac": "electron-builder --mac",
-    "install-all": "npm install && cd src/ui && npm install",
-    "postinstall": "echo \"Native module build skipped for CI\"",
-    "test": "echo \"No tests specified\" && exit 0"
+    "build:win": "electron-builder --win",
+    "install-all": "npm install && cd src/ui && npm install"
   },
   "author": "Aureate Launcher Team",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.1.0",
-    "electron-builder": "^24.6.4"
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0"
   },
   "dependencies": {
-    "fs-extra": "^11.2.0",
-    "extract-zip": "^2.0.1"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "fs-extra": "^11.1.1"
   },
   "build": {
     "appId": "com.aureate.launcher",
     "productName": "Aureate Launcher",
     "directories": {
-      "output": "dist",
-      "buildResources": "src/ui/assets"
+      "output": "dist"
     },
     "files": [
-      "src/ui/**/*",
-      "src/bridge/**/*",
+      "src/**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",
-      "!**/*.map",
-      "!src/core",
-      "!**/*.o",
-      "!**/*.obj"
+      "!**/*.map"
     ],
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "src/ui/assets/icon.ico",
-      "publisherName": "Aureate"
+      "target": "nsis",
+      "icon": "src/ui/assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
-    },
-    "linux": {
-      "target": ["AppImage", "deb"],
-      "icon": "src/ui/assets",
-      "category": "Game"
-    },
-    "mac": {
-      "target": ["dmg", "zip"],
-      "icon": "src/ui/assets/icon.icns",
-      "category": "public.app-category.games",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

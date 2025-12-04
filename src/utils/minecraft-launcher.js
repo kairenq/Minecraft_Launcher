@@ -819,5 +819,54 @@ pause >nul
     }, 2000);
   }
 }
+/**
+ * Проверка целостности файлов перед запуском
+ */
+async validateInstallation(versionId, isForge, isFabric) {
+  console.log('\n=== ПРОВЕРКА ЦЕЛОСТНОСТИ УСТАНОВКИ ===');
+  
+  // Проверка базового Minecraft
+  if (isForge || isFabric) {
+    const baseVersion = isForge || isFabric ? versionId.split('-')[0] : versionId;
+    const baseJar = path.join(this.versionsDir, baseVersion, `${baseVersion}.jar`);
+    
+    if (!fs.existsSync(baseJar)) {
+      throw new Error(`Базовый Minecraft ${baseVersion} не найден. Переустановите сборку.`);
+    }
+    
+    const stats = fs.statSync(baseJar);
+    if (stats.size < 10000000) { // Меньше 10MB
+      throw new Error(`Базовый Minecraft поврежден (${(stats.size / 1024 / 1024).toFixed(2)} MB). Переустановите сборку.`);
+    }
+    
+    console.log(`✓ Базовый Minecraft: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+  }
+
+  // Проверка Forge
+  if (isForge) {
+    const forgeJar = path.join(this.versionsDir, versionId, `${versionId}.jar`);
+    const forgeJson = path.join(this.versionsDir, versionId, `${versionId}.json`);
+    
+    if (!fs.existsSync(forgeJar)) {
+      throw new Error(`Forge JAR не найден: ${forgeJar}. Переустановите сборку.`);
+    }
+    
+    if (!fs.existsSync(forgeJson)) {
+      throw new Error(`Forge JSON не найден: ${forgeJson}. Переустановите сборку.`);
+    }
+    
+    const jarStats = fs.statSync(forgeJar);
+    const jsonStats = fs.statSync(forgeJson);
+    
+    console.log(`✓ Forge JAR: ${(jarStats.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`✓ Forge JSON: ${(jsonStats.size / 1024).toFixed(2)} KB`);
+    
+    if (jarStats.size < 1000) {
+      console.warn('⚠️  ВНИМАНИЕ: Forge JAR слишком маленький, возможны проблемы при запуске');
+    }
+  }
+
+  console.log('✓ Проверка целостности пройдена');
+}
 
 module.exports = MinecraftLauncher;

@@ -9,7 +9,7 @@
     "build": "electron-builder --win",
     "build:windows": "electron-builder --win",
     "build:win": "electron-builder --win",
-    "install-all": "npm install && cd src/ui && npm install"
+    "install-all": "npm install"
   },
   "author": "Aureate Launcher Team",
   "license": "MIT",
@@ -32,6 +32,14 @@
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",
       "!**/*.map"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "src/bridge/",
+        "to": "src/bridge/",
+        "filter": ["**/*"]
+      }
     ],
     "win": {
       "target": "nsis",

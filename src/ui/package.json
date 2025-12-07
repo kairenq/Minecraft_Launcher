@@ -1,8 +1,0 @@
-{
-  "name": "aureate-launcher-ui",
-  "version": "1.0.0",
-  "main": "main.js",
-  "dependencies": {
-    "fs-extra": "^11.1.1"
-  }
-}

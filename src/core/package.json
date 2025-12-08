@@ -1,0 +1,30 @@
+{
+  "name": "aureate-launcher-core",
+  "version": "1.0.0",
+  "description": "Native C++ core for Aureate Minecraft Launcher",
+  "main": "build/Release/launcher_core.node",
+  "gypfile": true,
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build": "node-gyp configure build",
+    "clean": "node-gyp clean",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "minecraft",
+    "launcher",
+    "native",
+    "addon"
+  ],
+  "author": "Aureate Launcher Team",
+  "license": "MIT",
+  "dependencies": {
+    "node-addon-api": "^6.1.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

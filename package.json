@@ -1,18 +1,24 @@
 {
   "name": "aureate-launcher",
   "version": "1.0.0",
-  "description": "Aureate Launcher - Премиум лаунчер для Minecraft с кастомными модпаками",
-  "main": "src/main/main.js",
+  "description": "Minecraft Launcher with C++ backend",
+  "main": "src/ui/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron .",
-    "test": "node test-launch.js",
-    "debug": "node debug-launch.js",
-    "check-jar": "node check_jar.js",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win --x64",
-    "build:linux": "electron-builder --linux",
-    "pack": "electron-builder --dir"
+    "dev": "electron . --enable-logging",
+    "build": "electron-builder --win",
+    "build:windows": "electron-builder --win",
+    "build:win": "electron-builder --win",
+    "install-all": "npm install"
+  },
+  "author": "Aureate Launcher Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.9.8",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "fs-extra": "^11.1.1"
   },
   "build": {
     "appId": "com.aureate.launcher",
@@ -22,26 +28,22 @@
     },
     "files": [
       "src/**/*",
-      "assets/**/*",
-      "package.json"
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "src/bridge/",
+        "to": "src/bridge/",
+        "filter": ["**/*"]
+      }
     ],
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/logo.ico"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "assets/logo.ico",
-      "category": "Game"
+      "target": "nsis",
+      "icon": "src/ui/assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -49,24 +51,5 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }
-  },
-  "keywords": [
-    "minecraft",
-    "launcher",
-    "game"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
-  "dependencies": {
-    "adm-zip": "^0.5.16",
-    "axios": "^1.6.0",
-    "extract-zip": "^2.0.1",
-    "fs-extra": "^11.1.1",
-    "node-stream-zip": "^1.15.0",
-    "p-limit": "^3.1.0"
-  },
-  "devDependencies": {
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
   }
 }
